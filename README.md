@@ -35,7 +35,7 @@ Full documentation can be found [here]().
 - [ ] KVM support*
 - [ ] Custom analysis tooling
 
-* *This technically already works, but there is no support for starting, stopping or reverting the VM directly from SANDLÅDA*
+\* *This technically already works, but there is no support for starting, stopping or reverting the VM directly from SANDLÅDA*
 
 ## Motivation
 SANDLÅDA *(Swedish for sandbox)* was built because I had so many different problems with cuckoo sandbox. Either it was a dependency problem or a software problem. The fact that it hasn't been upgraded to Python3 was a big motivator as well. I recently got very interested in malware analysis which gave me the idea to build my own sandbox :)
