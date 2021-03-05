@@ -41,12 +41,8 @@ func (c *Collection) SendStatus(status string, statusError error) error {
 		data.Set("error", "")
 	}
 	body := strings.NewReader(data.Encode())
-	log.Println(body)
 	collectionServer := fmt.Sprintf("%s/status/%s", c.Server, c.UUID)
-	resp, err := http.Post(collectionServer, "application/x-www-form-urlencoded", body)
-	if err == nil {
-		log.Println("Status code from sending status update: ", resp.Status)
-	}
+	_, err := http.Post(collectionServer, "application/x-www-form-urlencoded", body)
 	return err
 }
 
@@ -55,12 +51,13 @@ func (c *Collection) SendData(content []byte, filename string) error {
 	reader := bytes.NewReader(content)
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
-	defer w.Close()
 	part, _ := w.CreateFormFile("file", filename)
 	io.Copy(part, reader)
-
-	r, err := http.NewRequest("POST", c.Server, body)
+	log.Println(body)
+	w.Close()
+	r, err := http.NewRequest("POST", c.Server+"/collection", body)
 	if err != nil {
+		log.Println("Error creating collection request, error:", err)
 		return err
 	}
 	r.Header.Add("Content-Type", w.FormDataContentType())
@@ -103,15 +100,16 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	c.SendStatus("Behavior analysis started", nil)
+	if err := c.SendStatus("Behavior analysis started", nil); err != nil {
+		log.Println("Could not send status that behavior analysis started, error: ", err)
+	}
+
 	err := cmd.Start()
 
 	if err != nil {
-		// Send status update to collection server, task failed
 		if err = c.SendStatus("Could not start behavior analysis", err); err != nil {
 			log.Println("Behavior analysis did not start, sending status failed with error: ", err)
 		}
-		//return []byte{}, err
 	}
 
 	log.Printf("Waiting for command to finish...")
@@ -121,14 +119,16 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 		if err = c.SendStatus("Behavior analysis did not exit correctly", err); err != nil {
 			log.Println("Behavior analysis did not exit correctly, sending status failed with error: ", err)
 		}
-		//return stderr.Bytes(), err
 	}
 
 	if err = c.SendStatus("Behavior analysis completed", err); err != nil {
 		log.Println("Behavior analysis completed, sending status failed with error: ", err)
 	}
+
 	log.Printf("Command finished successfully")
-	// What to do with output??
-	// Either save to disk and pick up later to send immediately
-	//return stdout.Bytes(), nil
+
+	if err = c.SendData(stdout.Bytes(), "behavior.out"); err != nil {
+		log.Println("Could not send behavior analysis output to collection server, error: ", err)
+		// if this happens, save to disk instead?
+	}
 }

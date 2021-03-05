@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -57,22 +59,41 @@ func main() {
 
 	router.HandleFunc("/collection", func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != "POST" {
+			log.Println("Mehtod not supported!!")
 			errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
 			w.Write([]byte(errString))
 			return
 		}
 
-		var data []byte
+		var data bytes.Buffer
+		err := req.ParseMultipartForm(32 << 20)
 
-		bytesRead, err := req.Body.Read(data)
+		if err != nil {
+			log.Println("Could not parse multipart form, error: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		multipartFile, multiparFileHeader, err := req.FormFile("file")
+
+		if err != nil {
+			log.Println("Could not parse collection data, error: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		defer multipartFile.Close()
+
+		log.Println(multiparFileHeader.Filename)
+
+		io.Copy(&data, multipartFile)
+
 		if err != nil {
 			fmt.Println("Error reading collected data: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
-		fmt.Printf("Read %d bytes", bytesRead)
-
-		fmt.Println(data)
+		fmt.Println(string(data.Bytes()))
 
 		w.WriteHeader(http.StatusOK)
 
