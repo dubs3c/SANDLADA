@@ -1,0 +1,5 @@
+.vagrant/
+*.exe
+*.log
+test.sh
+main
