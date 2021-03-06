@@ -24,15 +24,14 @@ func ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) {
 	if len(messageError) > 0 {
 		log.Printf("Error: %s", messageError)
 	}
-	// receive status updates for given analysis project
-	// status := req.FormValue("message")
+
 	w.WriteHeader(http.StatusOK)
 }
 
 // CollectData collects the data that the agent has gathered
 func CollectData(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		log.Println("Mehtod not supported!!")
+		log.Println("Method not supported!!")
 		errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
 		w.Write([]byte(errString))
 		return

@@ -1,6 +1,10 @@
 package agent
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -11,10 +15,49 @@ func (c *Collection) Status(w http.ResponseWriter, req *http.Request) {
 	// checks systemtap is running, this is probably done via global variable?
 }
 
-// Transfer transfer files to the agent
-func (c *Collection) Transfer(w http.ResponseWriter, req *http.Request) {
-	// Collection server transfer files to VM via this endpoint
-	// Files should be placed in /tmp/
+// ReceiveTransfer receives file transfers
+func (c *Collection) ReceiveTransfer(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		log.Println("Method not supported!!")
+		errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
+		w.Write([]byte(errString))
+		return
+	}
+
+	var data bytes.Buffer
+	err := req.ParseMultipartForm(32 << 20)
+
+	if err != nil {
+		log.Println("Could not parse multipart form, error: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	multipartFile, multipartFileHeader, err := req.FormFile("file")
+
+	if err != nil {
+		log.Println("Could not parse transferred data, error: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	defer multipartFile.Close()
+
+	if _, err = io.Copy(&data, multipartFile); err != nil {
+		log.Println("Error reading data: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err = ioutil.WriteFile("/tmp/binary", data.Bytes(), 0777); err != nil {
+		log.Println("Error reading data: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Received file '%s' from %s", multipartFileHeader.Filename, req.RemoteAddr)
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // StartAnalysis kicks of analysis

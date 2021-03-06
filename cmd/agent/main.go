@@ -30,7 +30,7 @@ func main() {
 	router.HandleFunc("/run", c.RunCommand)
 	router.HandleFunc("/start", c.StartAnalysis)
 	router.HandleFunc("/status", c.Status)
-	router.HandleFunc("/transfer", c.Transfer)
+	router.HandleFunc("/transfer", c.ReceiveTransfer)
 
 	HTTPServer := &http.Server{
 		Addr:           "0.0.0.0:9001",
@@ -41,7 +41,7 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Println("[+] Starting Agent Server...")
+	log.Println("Starting Agent Server...")
 	idleConnsClosed := make(chan struct{})
 	go func() {
 		sigint := make(chan os.Signal, 1)
@@ -51,11 +51,13 @@ func main() {
 		// We received an interrupt signal, shut down.
 		if err := HTTPServer.Shutdown(context.Background()); err != nil {
 			// Error from closing listeners, or context timeout:
-			log.Printf("HTTP server Shutdown: %v", err)
+			log.Printf("Error shutting down HTTP server: %v", err)
 		}
+		log.Println("Shutting down HTTP server...")
 		close(idleConnsClosed)
 	}()
 
+	log.Println("Agent server is ready to rock")
 	if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
 		// Error starting or closing listener:
 		log.Fatalf("HTTP server ListenAndServe: %v", err)

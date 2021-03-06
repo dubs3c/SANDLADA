@@ -41,6 +41,10 @@ func main() {
 	router.HandleFunc("/status/", server.ReceiveStatusUpdate)
 	router.HandleFunc("/collection", server.CollectData)
 
+	/*if err := server.TransferFile("http://192.168.1.114:9001/transfer", "C:\\Users\\Michael\\go\\src\\github.com\\dubs3c\\SANDLADA\\mal.py"); err != nil {
+		log.Println("Could not transfer file, error: ", err)
+	}*/
+
 	HTTPServer := &http.Server{
 		Addr:           "0.0.0.0:9001",
 		Handler:        router,
