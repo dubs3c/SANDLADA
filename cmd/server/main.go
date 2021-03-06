@@ -2,14 +2,13 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
+
+	"github.com/dubs3c/SANDLADA/server"
 )
 
 // Can be further developed for the interactive version
@@ -39,65 +38,8 @@ func main() {
 
 	})
 
-	router.HandleFunc("/status/", func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != "POST" {
-			errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
-			w.Write([]byte(errString))
-			return
-		}
-		uuid := strings.TrimPrefix(req.URL.Path, "/status/")
-		message := req.FormValue("message")
-		messageError := req.FormValue("error")
-		log.Printf("Received status update for %s. Message: %s", uuid, message)
-		if len(messageError) > 0 {
-			log.Printf("Error: %s", messageError)
-		}
-		// receive status updates for given analysis project
-		// status := req.FormValue("message")
-		w.WriteHeader(http.StatusOK)
-	})
-
-	router.HandleFunc("/collection", func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != "POST" {
-			log.Println("Mehtod not supported!!")
-			errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
-			w.Write([]byte(errString))
-			return
-		}
-
-		var data bytes.Buffer
-		err := req.ParseMultipartForm(32 << 20)
-
-		if err != nil {
-			log.Println("Could not parse multipart form, error: ", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		multipartFile, multiparFileHeader, err := req.FormFile("file")
-
-		if err != nil {
-			log.Println("Could not parse collection data, error: ", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		defer multipartFile.Close()
-
-		log.Println(multiparFileHeader.Filename)
-
-		io.Copy(&data, multipartFile)
-
-		if err != nil {
-			fmt.Println("Error reading collected data: ", err)
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-
-		fmt.Println(string(data.Bytes()))
-
-		w.WriteHeader(http.StatusOK)
-
-	})
+	router.HandleFunc("/status/", server.ReceiveStatusUpdate)
+	router.HandleFunc("/collection", server.CollectData)
 
 	HTTPServer := &http.Server{
 		Addr:           "0.0.0.0:9001",
@@ -116,37 +58,3 @@ func main() {
 	scanner()
 
 }
-
-/* https://wiki.ubuntu.com/Kernel/Systemtap
-
-Need to get PID of sample and pass it to systemtap, like so:
-
-stap_start = time.time()
-        self.proc = subprocess.Popen([
-            "staprun", "-vv",
-            "-x", str(os.getpid()),
-            "-o", "stap.log",
-            path,
-        ], stderr=subprocess.PIPE)
-
-		sudo stap -p4 -r $(uname -r) strace.stp -m stap_ -v
-
-
-----------------------------
-
-
-
-[DYNAMIC]
-pid = startaProgram()
-
-go startaSystemTap(pid)
-go startaPcap()
-go startaX()
-
-if not pid:
-	programDone()
-	StopCoroutines()
-	collectInformation() -> Pcap, systemtap, logs(?)
-	revertBackToSnapshot()
-
-*/

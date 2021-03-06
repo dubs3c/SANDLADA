@@ -25,9 +25,10 @@ type Task struct {
 // Collection contains information about the collection server
 // and the ID of a given analysis
 type Collection struct {
-	Server string
-	UUID   uuid.UUID
-	Task   *Task
+	Server   string
+	UUID     uuid.UUID
+	Task     *Task
+	Executer string
 }
 
 // SendStatus sends a status update to the collection server
@@ -110,6 +111,8 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 		if err = c.SendStatus("Could not start behavior analysis", err); err != nil {
 			log.Println("Behavior analysis did not start, sending status failed with error: ", err)
 		}
+		log.Println("Could not start command, error: ", err)
+		return
 	}
 
 	log.Printf("Waiting for command to finish...")
@@ -119,6 +122,8 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 		if err = c.SendStatus("Behavior analysis did not exit correctly", err); err != nil {
 			log.Println("Behavior analysis did not exit correctly, sending status failed with error: ", err)
 		}
+		log.Println("Behavior analysis did not exit correctly, error: ", err)
+		return
 	}
 
 	if err = c.SendStatus("Behavior analysis completed", err); err != nil {
