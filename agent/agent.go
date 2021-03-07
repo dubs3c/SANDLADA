@@ -1,139 +1,71 @@
 package agent
 
 import (
-	"bytes"
-	"fmt"
-	"io"
+	"context"
 	"log"
-	"mime/multipart"
 	"net/http"
-	"net/url"
-	"os/exec"
-	"strings"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// Task contains the state of each step in the analysis flow
-type Task struct {
-	StaticAnalysis   string
-	BehaviorAnalysis string
-	NetworkSniffing  string
+// Options options for agent mode
+type Options struct {
+	Server    string
+	LocalPort int
 }
 
-// Collection contains information about the collection server
-// and the ID of a given analysis
-type Collection struct {
-	Server   string
-	UUID     uuid.UUID
-	Task     *Task
-	Executer string
-}
+// StartAgent starts SANDLÅDA in agent mode
+func StartAgent() {
 
-// SendStatus sends a status update to the collection server
-// for a given analysis project
-func (c *Collection) SendStatus(status string, statusError error) error {
-	data := url.Values{}
-	data.Set("message", status)
-	if statusError != nil {
-		data.Set("error", statusError.Error())
-	} else {
-		data.Set("error", "")
-	}
-	body := strings.NewReader(data.Encode())
-	collectionServer := fmt.Sprintf("%s/status/%s", c.Server, c.UUID)
-	_, err := http.Post(collectionServer, "application/x-www-form-urlencoded", body)
-	return err
-}
+	router := http.NewServeMux()
+	router.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("I'm OK"))
+	})
 
-// SendData sends collected data to the collection server running on the host machine
-func (c *Collection) SendData(content []byte, filename string) error {
-	reader := bytes.NewReader(content)
-	body := &bytes.Buffer{}
-	w := multipart.NewWriter(body)
-	part, _ := w.CreateFormFile("file", filename)
-	io.Copy(part, reader)
-	log.Println(body)
-	w.Close()
-	r, err := http.NewRequest("POST", c.Server+"/collection", body)
-	if err != nil {
-		log.Println("Error creating collection request, error:", err)
-		return err
-	}
-	r.Header.Add("Content-Type", w.FormDataContentType())
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-	_, err = client.Do(r)
-	return err
-}
-
-// StaticAnalysis Performs static analysis on the malware sample
-func (c *Collection) StaticAnalysis() {
-	// yara
-	// objdump if linux
-	// readelf if linux
-	//
-}
-
-// BeginNetworkSniffing Runs packet capturing
-func (c *Collection) BeginNetworkSniffing() {
-	// sniff the network
-}
-
-// BehaviorAnalysis Runs malware sample
-// Executer specifies if the sample should be run by a specific program
-// For example, some samples needs to be run as 'python2 sample.py'.
-// If executer is not specified, the analysis will assume it should be executed with dot forward slash, i.e './'
-func (c *Collection) BehaviorAnalysis(executer string) {
-	var commando string
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	if len(executer) > 0 {
-		commando = fmt.Sprintf("%s /tmp/binary", executer)
-	} else {
-		commando = fmt.Sprintf("./tmp/binary")
+	c := &Collection{
+		Server: "http://192.168.1.25:9001",
+		UUID:   uuid.New(),
 	}
 
-	cmd := exec.Command("sudo", "staprun", "-c", commando, "/home/vagrant/stp-scripts/sandlada.ko")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	router.HandleFunc("/run", c.RunCommand)
+	router.HandleFunc("/start", c.StartAnalysis)
+	router.HandleFunc("/status", c.Status)
+	router.HandleFunc("/transfer", c.ReceiveTransfer)
 
-	if err := c.SendStatus("Behavior analysis started", nil); err != nil {
-		log.Println("Could not send status that behavior analysis started, error: ", err)
+	HTTPServer := &http.Server{
+		Addr:           "0.0.0.0:9001",
+		Handler:        router,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    15 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
-	err := cmd.Start()
+	log.Println("Starting Agent Server...")
+	idleConnsClosed := make(chan struct{})
+	go func() {
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, os.Interrupt)
+		<-sigint
 
-	if err != nil {
-		if err = c.SendStatus("Could not start behavior analysis", err); err != nil {
-			log.Println("Behavior analysis did not start, sending status failed with error: ", err)
+		// We received an interrupt signal, shut down.
+		if err := HTTPServer.Shutdown(context.Background()); err != nil {
+			// Error from closing listeners, or context timeout:
+			log.Printf("Error shutting down HTTP server: %v", err)
 		}
-		log.Println("Could not start command, error: ", err)
-		return
+		log.Println("Shutting down HTTP server...")
+		close(idleConnsClosed)
+	}()
+
+	log.Println("Agent server is ready to rock")
+	if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
+		// Error starting or closing listener:
+		log.Fatalf("HTTP server ListenAndServe: %v", err)
 	}
 
-	log.Printf("Waiting for command to finish...")
-	err = cmd.Wait()
-
-	if err != nil {
-		if err = c.SendStatus("Behavior analysis did not exit correctly", err); err != nil {
-			log.Println("Behavior analysis did not exit correctly, sending status failed with error: ", err)
-		}
-		log.Println("Behavior analysis did not exit correctly, error: ", err)
-		return
-	}
-
-	if err = c.SendStatus("Behavior analysis completed", err); err != nil {
-		log.Println("Behavior analysis completed, sending status failed with error: ", err)
-	}
-
-	log.Printf("Command finished successfully")
-
-	if err = c.SendData(stdout.Bytes(), "behavior.out"); err != nil {
-		log.Println("Could not send behavior analysis output to collection server, error: ", err)
-		// if this happens, save to disk instead?
-	}
+	<-idleConnsClosed
 }
