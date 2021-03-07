@@ -102,25 +102,21 @@ func main() {
 
 	switch os.Args[1] {
 	case "server":
-		log.Println("You entered server")
-		serverMode.Parse(os.Args[2:])
+		if err := serverMode.Parse(os.Args[2:]); err != nil {
+			log.Fatal("Someting went wrong parsing server options, error: ", err)
+		}
+		server.StartServer(srvOpts)
 	case "agent":
-		log.Println("You entered agent")
-		agentMode.Parse(os.Args[2:])
+		if err := agentMode.Parse(os.Args[2:]); err != nil {
+			log.Fatal("Someting went wrong parsing server options, error: ", err)
+		}
+		agent.StartAgent()
 	case "version":
 		fmt.Println("Version 0.5")
 		os.Exit(0)
 	default:
 		fmt.Printf("%q is not valid command.\n", os.Args[1])
 		os.Exit(2)
-	}
-
-	if serverMode.Parsed() {
-		server.StartServer(srvOpts)
-	}
-
-	if agentMode.Parsed() {
-		agent.StartAgent()
 	}
 
 }
