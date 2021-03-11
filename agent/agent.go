@@ -6,9 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Options options for agent mode
@@ -18,7 +17,7 @@ type Options struct {
 }
 
 // StartAgent starts SANDLÅDA in agent mode
-func StartAgent() {
+func StartAgent(opts Options) {
 
 	router := http.NewServeMux()
 	router.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
@@ -27,8 +26,7 @@ func StartAgent() {
 	})
 
 	c := &Collection{
-		Server: "http://192.168.1.25:9001",
-		UUID:   uuid.New(),
+		Server: "http://" + opts.Server,
 	}
 
 	router.HandleFunc("/run", c.RunCommand)
@@ -37,7 +35,7 @@ func StartAgent() {
 	router.HandleFunc("/transfer", c.ReceiveTransfer)
 
 	HTTPServer := &http.Server{
-		Addr:           "0.0.0.0:9001",
+		Addr:           "0.0.0.0:" + strconv.Itoa(opts.LocalPort),
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,

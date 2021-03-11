@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
 // ReceiveStatusUpdate receives status updates from the agent, e.g. what's currently running
 // or if any errors has ocurred
-func ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) {
+func (o *Options) ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
 		w.Write([]byte(errString))
@@ -29,11 +31,20 @@ func ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) {
 }
 
 // CollectData collects the data that the agent has gathered
-func CollectData(w http.ResponseWriter, req *http.Request) {
+func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		log.Println("Method not supported!!")
 		errString := fmt.Sprintf("'%s' http method is not supported. Please use POST.", req.Method)
 		w.Write([]byte(errString))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	uuid := strings.TrimPrefix(req.URL.Path, "/collection/")
+	if uuid == "" {
+		log.Print("Did not receive UUID for collection request")
+		w.Write([]byte("Please specify UUID string as path parameter"))
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -56,8 +67,6 @@ func CollectData(w http.ResponseWriter, req *http.Request) {
 
 	defer multipartFile.Close()
 
-	log.Println(multiparFileHeader.Filename)
-
 	io.Copy(&data, multipartFile)
 
 	if err != nil {
@@ -65,7 +74,26 @@ func CollectData(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
-	fmt.Println(string(data.Bytes()))
+	store := o.Result + "/" + uuid
+	filename := store + "/" + multiparFileHeader.Filename
 
+	if _, err = os.Stat(store); os.IsNotExist(err) {
+
+		if err = os.MkdirAll(store, 0755); err != nil {
+			log.Printf("Could not create '%s'\n", store)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+	}
+
+	if err = ioutil.WriteFile(filename, data.Bytes(), 0755); err != nil {
+		log.Printf("Could not write %s. Error: %v", filename, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+
+	}
+
+	log.Printf("Saved result to %s", filename)
 	w.WriteHeader(http.StatusOK)
 }

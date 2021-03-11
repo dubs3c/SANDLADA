@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"os/exec"
 	"strings"
 )
@@ -11,78 +12,83 @@ type Machine interface {
 	Stop() error
 	Pause() error
 	Revert() error
-	Status() (bool, error)
+	Info() ([]byte, error)
+	IsRunning() (bool, error)
 }
 
-// VBox  - VirtualBox provider
-type VBox struct {
-	Name string
-	UUID string
+// VMInfo - VirtualBox provider
+type VMInfo struct {
+	Name     string
+	UUID     string
+	Path     string
+	Snapshot string
+	IP       string
 }
 
 // Start - Start a virtual machine
-func (m *VBox) Start() error {
+func (m *VMInfo) Start() error {
 	cmd := exec.Command("VBoxManage", "startvm", m.UUID, "--type", "headless")
-	if err := command(cmd); err != nil {
+	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Stop - Stop a virtual machine
-func (m *VBox) Stop() error {
+func (m *VMInfo) Stop() error {
 	cmd := exec.Command("VBoxManage", "controlvm", m.UUID, "poweroff")
-	if err := command(cmd); err != nil {
+	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Pause - Pause a virtual machine
-func (m *VBox) Pause() error {
+func (m *VMInfo) Pause() error {
 	cmd := exec.Command("VBoxManage", "controlvm", m.UUID, "pause")
-	if err := command(cmd); err != nil {
+	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Revert - Revert virtual machine to latest snapshot
-func (m *VBox) Revert() error {
+func (m *VMInfo) Revert() error {
 	cmd := exec.Command("VBoxManage", "snapshot", m.UUID, "restorecurrent")
-	if err := command(cmd); err != nil {
+	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Info - Show info about virtual machine
-func (m *VBox) Info() error {
+func (m *VMInfo) Info() ([]byte, error) {
 	cmd := exec.Command("VBoxManage", "showvminfo", m.UUID)
-	if err := command(cmd); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Status - Return status of virtual machine
-func (m *VBox) Status() (bool, error) {
-	cmd := exec.Command("VBoxManage", "list", "runningvms")
-	if err := command(cmd); err != nil {
-		return false, err
+	if err := cmd.Run(); err != nil {
+		return []byte{}, err
 	}
 	out, _ := cmd.Output()
-	if strings.Contains(string(out), m.UUID) {
-		return true, nil
-	}
-	return false, nil
+	return out, nil
 }
 
-func command(e *exec.Cmd) error {
-	if err := e.Run(); err != nil {
-		return err
+// IsRunning - Checks if virtual machine is running
+func (m *VMInfo) IsRunning() (bool, error) {
+	var out bytes.Buffer
+
+	cmd := exec.Command("VBoxManage", "list", "runningvms")
+	cmd.Stdout = &out
+
+	if err := cmd.Run(); err != nil {
+		return false, err
 	}
-	return nil
+
+	if string(out.String()) != "" {
+		if strings.Contains(out.String(), m.Name) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 /*

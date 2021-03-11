@@ -3,13 +3,19 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/signal"
+	"strconv"
 	"time"
+
+	"github.com/dubs3c/SANDLADA/provider"
+	"gopkg.in/ini.v1"
 )
 
 // Options options for server mode
@@ -23,8 +29,45 @@ type Options struct {
 	Sample    string
 }
 
+// IsAlive tries to contact the agent running inside the VM
+func IsAlive(ip string) (bool, error) {
+
+	resp, err := GetRequest(ip, "health")
+
+	if err != nil {
+		return false, err
+	}
+
+	if resp == 200 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// GetRequest sends a GET request to a given endpoint
+func GetRequest(ip string, endpoint string) (int, error) {
+	addr := fmt.Sprintf("http://%s/%s", ip, endpoint)
+	r, err := http.NewRequest("GET", addr, bytes.NewBuffer([]byte{}))
+
+	if err != nil {
+		log.Println("Error creating collection request, error:", err)
+		return 0, err
+	}
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
+
+}
+
 // SendData sends data to agent
-func SendData(url string, content *[]byte) error {
+func SendData(url string, content *[]byte) (int, error) {
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
 
@@ -38,28 +81,29 @@ func SendData(url string, content *[]byte) error {
 
 	if err != nil {
 		log.Println("Error creating collection request, error:", err)
-		return err
+		return 0, err
 	}
 
 	client := &http.Client{
 		Timeout: 3 * time.Second,
 	}
-	_, err = client.Do(r)
-	return err
+	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
 }
 
 // TransferFile transfers the malware sample to the agent
-// Meh, this function is only 5 lines, and not easy to test
-// might as well break it up.
-// I could maybe write a file to disk during test and pass it as filePath
-// feels messy though
-func TransferFile(url string, filePath string) error {
+func TransferFile(ip string, filePath string) (int, error) {
 	content, err := ioutil.ReadFile(filePath)
+
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return SendData(url, &content)
+	statusCode, err := SendData("http://"+ip+"/transfer", &content)
+	return statusCode, err
 }
 
 // Can be further developed for the interactive version
@@ -70,18 +114,7 @@ func scanner() {
 	}
 }
 
-// StartServer starts SANDLÅDA in server mode
-func StartServer(opts Options) {
-	/*var m Machine
-	m = &VBox{d
-		UUID: "7d473abc-0796-4186-bbc4-7144b5399daf",
-		Name: "DynLabs",
-	}
-
-	if err := m.Stop(); err != nil {
-		log.Println("Could not stop virtual machine", err)
-	}*/
-
+func httpServer(opts Options) *http.Server {
 	router := http.NewServeMux()
 	router.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -89,15 +122,11 @@ func StartServer(opts Options) {
 
 	})
 
-	router.HandleFunc("/status/", ReceiveStatusUpdate)
-	router.HandleFunc("/collection", CollectData)
-
-	/*if err := server.TransferFile("http://192.168.1.114:9001/transfer", "C:\\Users\\Michael\\go\\src\\github.com\\dubs3c\\SANDLADA\\mal.py"); err != nil {
-		log.Println("Could not transfer file, error: ", err)
-	}*/
+	router.HandleFunc("/status/", opts.ReceiveStatusUpdate)
+	router.HandleFunc("/collection/", opts.CollectData)
 
 	HTTPServer := &http.Server{
-		Addr:           "0.0.0.0:9001",
+		Addr:           "0.0.0.0:" + strconv.Itoa(opts.LocalPort),
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
@@ -105,10 +134,122 @@ func StartServer(opts Options) {
 		MaxHeaderBytes: 1 << 20,
 	}
 
+	return HTTPServer
+}
+
+// StartServer starts SANDLÅDA in server mode
+func StartServer(opts Options) {
+	var m provider.Machine
+	cfg, err := ini.Load(opts.Config)
+	if err != nil {
+		log.Fatal("Fail to read configuration file: ", err)
+	}
+
+	vmProvider := cfg.Section("sandlada").Key("provider").String()
+	snapshot := cfg.Section(opts.AgentVM).Key("snapshot").String()
+	vmInfo := &provider.VMInfo{
+		UUID:     cfg.Section(opts.AgentVM).Key("uuid").String(),
+		Name:     opts.AgentVM,
+		Path:     cfg.Section("virtualbox").Key("path").String(),
+		Snapshot: snapshot,
+		IP:       cfg.Section(opts.AgentVM).Key("ip").String(),
+	}
+
+	if vmProvider == "virtualbox" {
+		m = vmInfo
+	}
+
+	running, err := m.IsRunning()
+
+	if err != nil {
+		log.Println("Could not check if VM is running, error: ", err)
+		log.Println("Checking if I can contact agent...")
+		ok, err := IsAlive(vmInfo.IP)
+
+		if err != nil {
+			log.Fatal("Error contacting agent, error: ", err)
+		}
+
+		if ok {
+			log.Println("Agent is responding to health checks, continuing...")
+		} else {
+			log.Fatal("Agent did not respond with 200 OK")
+		}
+
+	}
+
+	if !running {
+		log.Println("Starting VM...")
+		if err := m.Start(); err != nil {
+			log.Fatal("Could not start VM: ", err)
+		}
+		log.Println("Started...")
+		log.Println("Waiting for contact with agent...")
+		for true {
+			ok, _ := IsAlive(vmInfo.IP)
+			if ok {
+				log.Println("Agent online!")
+				break
+			}
+			time.Sleep(3 * time.Second)
+		}
+		time.Sleep(20 * time.Second)
+	} else {
+		log.Println("VM is running...")
+	}
+
+	log.Println("Sending malware sample...")
+
+	statusCode, err := TransferFile(cfg.Section(opts.AgentVM).Key("ip").String(), opts.Sample)
+	if err != nil {
+		log.Fatalf("Could not transfer malware sample. Got status code %d, expected 200. %v", statusCode, err)
+	}
+
+	if statusCode != 200 {
+		log.Fatal("Malware sample was not received correctly...")
+	}
+
+	log.Println("Malware sample received...")
+
+	HTTPServer := httpServer(opts)
+
+	status, err := GetRequest(vmInfo.IP, "start")
+
+	if err != nil {
+		log.Println("Could not start analysis automatically, please start manually")
+	}
+
+	if status == 200 {
+		log.Println("Analysis has been started...")
+	}
+
+	// interactive mode
+	//go scanner()
+
+	idleConnsClosed := make(chan struct{})
 	go func() {
-		fmt.Println("[+] Starting collection server...")
-		log.Fatal(HTTPServer.ListenAndServe())
+		sigint := make(chan os.Signal, 1)
+		signal.Notify(sigint, os.Interrupt)
+		<-sigint
+
+		// We received an interrupt signal, shut down.
+		if err := HTTPServer.Shutdown(context.Background()); err != nil {
+			// Error from closing listeners, or context timeout:
+			log.Printf("Error shutting down HTTP server: %v", err)
+		}
+		log.Println("Shutting down HTTP server...")
+		close(idleConnsClosed)
 	}()
 
-	scanner()
+	// sätt detta i en coroutine
+	log.Println("Starting collection server...")
+	if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
+		// Error starting or closing listener:
+		log.Fatalf("HTTP server ListenAndServe: %v", err)
+	}
+
+	log.Println("Blocking????")
+
+	<-idleConnsClosed
+
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/dubs3c/SANDLADA/agent"
@@ -16,6 +15,9 @@ func main() {
 	agentOpts := agent.Options{}
 	agentMode := flag.NewFlagSet("agent", flag.ExitOnError)
 	serverMode := flag.NewFlagSet("server", flag.ExitOnError)
+	userHomeDir, _ := os.UserHomeDir()
+	sandladaDir := userHomeDir + "/.sandlada"
+	resultDir := sandladaDir + "/result"
 
 	serverMode.StringVar(&srvOpts.Sample, "sample", "", "Malware sample to analyse")
 	serverMode.StringVar(&srvOpts.Sample, "s", "", "Malware sample to analyse")
@@ -25,10 +27,10 @@ func main() {
 	serverMode.StringVar(&srvOpts.AgentIP, "ip", "", "IP of agent to send sample to")
 	serverMode.StringVar(&srvOpts.Database, "database", "~/.sandlada/sqlite.db", "Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db")
 	serverMode.StringVar(&srvOpts.Database, "d", "~/.sandlada/sqlite.db", "Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db")
-	serverMode.StringVar(&srvOpts.Config, "config", "~/.sandlada/config", "Configuration file to read from. Default ~/.sandlada/config")
-	serverMode.StringVar(&srvOpts.Config, "c", "~/.sandlada/config", "Configuration file to read from. Default ~/.sandlada/config")
-	serverMode.StringVar(&srvOpts.Result, "result", "~/.sandlada/result/", "Folder location to store analysis results in. Default ~/.sandlada/result")
-	serverMode.StringVar(&srvOpts.Result, "r", "", "Folder location to store analysis results in. Default ~/.sandlada/result")
+	serverMode.StringVar(&srvOpts.Config, "config", "~/.sandlada/config.ini", "Configuration file to read from. Default ~/.sandlada/config.ini")
+	serverMode.StringVar(&srvOpts.Config, "c", "~/.sandlada/config.ini", "Configuration file to read from. Default ~/.sandlada/config.ini")
+	serverMode.StringVar(&srvOpts.Result, "result", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
+	serverMode.StringVar(&srvOpts.Result, "r", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
 	serverMode.IntVar(&srvOpts.LocalPort, "lport", 9001, "Local port to listen on. Default 9001")
 	serverMode.IntVar(&srvOpts.LocalPort, "lp", 9001, "Local port to listen on. Default 9001")
 
@@ -103,14 +105,14 @@ func main() {
 	switch os.Args[1] {
 	case "server":
 		if err := serverMode.Parse(os.Args[2:]); err != nil {
-			log.Fatal("Someting went wrong parsing server options, error: ", err)
+			fmt.Println("Someting went wrong parsing server options, error: ", err)
 		}
-		server.StartServer(srvOpts)
+		break
 	case "agent":
 		if err := agentMode.Parse(os.Args[2:]); err != nil {
-			log.Fatal("Someting went wrong parsing server options, error: ", err)
+			fmt.Println("Someting went wrong parsing agent options, error:", err)
 		}
-		agent.StartAgent()
+		break
 	case "version":
 		fmt.Println("Version 0.5")
 		os.Exit(0)
@@ -119,4 +121,27 @@ func main() {
 		os.Exit(2)
 	}
 
+	if serverMode.Parsed() {
+		if srvOpts.Sample == "" {
+			fmt.Println("Please specify a malware sample to analyse")
+			os.Exit(1)
+		}
+
+		if srvOpts.AgentIP == "" && srvOpts.AgentVM == "" || srvOpts.AgentIP != "" && srvOpts.AgentVM != "" {
+			fmt.Println("Please specify a either a VM or an IP for the analysis machine")
+			os.Exit(1)
+		}
+
+		server.StartServer(srvOpts)
+	}
+
+	if agentMode.Parsed() {
+
+		if agentOpts.Server == "" {
+			fmt.Println("Please specify a collection server")
+			os.Exit(1)
+		}
+
+		agent.StartAgent(agentOpts)
+	}
 }

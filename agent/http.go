@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 // Status returns the status of a scan
@@ -62,7 +64,7 @@ func (c *Collection) ReceiveTransfer(w http.ResponseWriter, req *http.Request) {
 
 // StartAnalysis kicks of analysis
 func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
-	// TODO - Put router in struct
+	c.UUID = uuid.New()
 
 	log.Println("Starting analysis...")
 	//go run.BeginNetworkSniffing()
@@ -71,7 +73,7 @@ func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 	// should be sent as a body parameter in the POST request
 	go c.BehaviorAnalysis("python2")
 
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(c.UUID.String()))
 }
 

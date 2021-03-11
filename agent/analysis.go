@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -48,25 +49,24 @@ func (c *Collection) SendStatus(status string, statusError error) error {
 }
 
 // SendData sends collected data to the collection server running on the host machine
-func (c *Collection) SendData(content []byte, filename string) error {
+func (c *Collection) SendData(content []byte, filename string) (int, error) {
 	reader := bytes.NewReader(content)
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
 	part, _ := w.CreateFormFile("file", filename)
 	io.Copy(part, reader)
-	log.Println(body)
 	w.Close()
-	r, err := http.NewRequest("POST", c.Server+"/collection", body)
+	r, err := http.NewRequest("POST", c.Server+"/collection/"+c.UUID.String(), body)
 	if err != nil {
 		log.Println("Error creating collection request, error:", err)
-		return err
+		return 0, err
 	}
 	r.Header.Add("Content-Type", w.FormDataContentType())
 	client := &http.Client{
 		Timeout: 3 * time.Second,
 	}
-	_, err = client.Do(r)
-	return err
+	resp, err := client.Do(r)
+	return resp.StatusCode, err
 }
 
 // StaticAnalysis Performs static analysis on the malware sample
@@ -91,6 +91,14 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
+	if _, err := os.Stat("/tmp/binary"); os.IsNotExist(err) {
+		log.Println("Malware sample does not exist")
+		if err = c.SendStatus("Malware sample does not exist at /tmp/binary", err); err != nil {
+			log.Println("Malware sample does not exist, sending status failed with error: ", err)
+		}
+		return
+	}
+
 	if len(executer) > 0 {
 		commando = fmt.Sprintf("%s /tmp/binary", executer)
 	} else {
@@ -112,6 +120,7 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 			log.Println("Behavior analysis did not start, sending status failed with error: ", err)
 		}
 		log.Println("Could not start command, error: ", err)
+		log.Println(stderr.String())
 		return
 	}
 
@@ -123,6 +132,7 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 			log.Println("Behavior analysis did not exit correctly, sending status failed with error: ", err)
 		}
 		log.Println("Behavior analysis did not exit correctly, error: ", err)
+		log.Println(stderr.String())
 		return
 	}
 
@@ -132,8 +142,17 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 
 	log.Printf("Command finished successfully")
 
-	if err = c.SendData(stdout.Bytes(), "behavior.out"); err != nil {
+	statusCode, err := c.SendData(stdout.Bytes(), "behavior.txt")
+	if err != nil {
 		log.Println("Could not send behavior analysis output to collection server, error: ", err)
+		return
 		// if this happens, save to disk instead?
 	}
+
+	if statusCode == 200 {
+		log.Println("Behavior analysis result sent to collection server!")
+	} else {
+		log.Printf("Behavior analysis result was sent but not processed correctly. Expected status code 200, got %d", statusCode)
+	}
+
 }
