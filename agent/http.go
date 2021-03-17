@@ -112,3 +112,7 @@ func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(c.UUID.String()))
 }
+
+func (c *Collection) RunCommand(w http.ResponseWriter, req *http.Request) {
+
+}
