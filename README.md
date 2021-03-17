@@ -1,6 +1,8 @@
 
 # SANDLÅDA
 
+_(**Alpha version, still in active development**)_
+
 **SANDLÅDA** is a dynamic malware analysis sandbox. It allows analysts to quickly and easily start analysing malware without caring about software dependencies or a gazillion configuration files. It's built in golang so it can easily be cross compiled to preferred platform and architecture.
 
 **Features:**
