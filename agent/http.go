@@ -2,11 +2,13 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -62,50 +64,51 @@ func (c *Collection) ReceiveTransfer(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (c *Collection) letsGo() {
+	d := 120 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+
+	go c.BeginNetworkSniffing(ctx)
+	go c.StaticAnalysis(ctx)
+
+	go func() {
+		c.BehaviorAnalysis(ctx, "python2")
+		cancel()
+	}()
+
+	// Wait until behavior analysis has canceled or timeout is reached
+	<-ctx.Done()
+	log.Println("Analysis is done!")
+	log.Println(ctx.Err())
+
+	files := []string{"capture.pcap", "behave.txt", "yara.txt", "objdump.txt", "readelf.txt"}
+
+	for _, v := range files {
+		go func(filename string) {
+			out, err := ioutil.ReadFile("/tmp/" + filename)
+			if err != nil {
+				log.Println("Could not read file", "/tmp/"+filename)
+				return
+			} else {
+				if code, err := c.SendData(out, filename); err != nil {
+					log.Printf("Could not send file %s. Got status code %d. Error: %v", filename, code, err)
+					return
+				}
+				log.Printf("File %s sent to collection server", filename)
+			}
+		}(v)
+	}
+}
+
 // StartAnalysis kicks of analysis
 func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 	c.UUID = uuid.New()
 
 	log.Println("Starting analysis...")
-	//go run.BeginNetworkSniffing()
-	//go run.StaticAnalysis()
-	// host must send executer string if needed. can be set in collection struct maybe
-	// should be sent as a body parameter in the POST request
-	go c.BehaviorAnalysis("python2")
+
+	go c.letsGo()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(c.UUID.String()))
 }
-
-// RunCommand commands in the VM running the agent
-func (c *Collection) RunCommand(w http.ResponseWriter, req *http.Request) {
-
-}
-
-/*
-	Version 1.
-		Each step runs and saves output to disk
-		A method polls the struct to check if all steps are done,
-		if that is the case, zip the folder containing the files and send to collection.
-
-	Version 2.
-		Each step sends its result when ready
-		Requires the server to be aware of each step, either via /collection/<step>
-		or by including which step is done in the request
-		 --> /collection/<uuid>/static
-		 --> /collection/<uuid>/dynamic
-		 --> /collection/<uuid>/network
-		Static can contain many sub-tasks, should send as zip file
-		Maybe all requests should be sent as a zip file.
-		If I start 1000 different scans several times, I might want to scan the results myself on disk,
-		if the all files are zipped, it becomes more overhead
-		I could unpack zip files on arrival
-
-	Version 3.
-		Each step runs and directly uploads the result to the collection server
-		När man startar collection server väljer man om man vill utöver att spara till DB, spara till disk
-
-	Final:
-		Agent should always upload directly to collection server. The collection server will then decide
-		if the data should be written to disk as well.
-*/

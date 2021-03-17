@@ -2,8 +2,10 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -66,30 +68,81 @@ func (c *Collection) SendData(content []byte, filename string) (int, error) {
 		Timeout: 3 * time.Second,
 	}
 	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
 	return resp.StatusCode, err
 }
 
 // StaticAnalysis Performs static analysis on the malware sample
-func (c *Collection) StaticAnalysis() {
+func (c *Collection) StaticAnalysis(ctx context.Context) {
+	log.Println("Running static analysis")
 	// yara
 	// objdump if linux
 	// readelf if linux
-	//
+	log.Println("static analysis complete")
 }
 
 // BeginNetworkSniffing Runs packet capturing
-func (c *Collection) BeginNetworkSniffing() {
-	// sniff the network
+func (c *Collection) BeginNetworkSniffing(ctx context.Context) {
+	log.Println("Running packet sniffing...")
+	command := []string{"tcpdump", "-s", "65535", "-w", "/tmp/capture.pcap"}
+	err, output := c.runCommand(ctx, "Network Sniffing", command)
+	if err != nil {
+		log.Println(output)
+		log.Println(err)
+	} else {
+		log.Printf("Network sniffing finished successfully")
+	}
+}
+
+func (c *Collection) runCommand(ctx context.Context, taskName string, commando []string) (error, []byte) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "sudo", commando...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := c.SendStatus(taskName+" started", nil); err != nil {
+		log.Println("Could not send status that behavior analysis started, error: ", err)
+	}
+
+	err := cmd.Start()
+
+	if err != nil {
+		if err = c.SendStatus(taskName+" could not be started", err); err != nil {
+			log.Println(taskName+"did not start, sending status failed with error: ", err)
+		}
+		log.Println("Could not start command, error: ", err)
+		log.Println(stderr.String())
+		return err, stderr.Bytes()
+	}
+
+	log.Printf("Waiting for %s to finish...\n", taskName)
+	err = cmd.Wait()
+
+	if err != nil {
+		if err = c.SendStatus(taskName+" did not exit correctly", err); err != nil {
+			log.Println(taskName+" did not exit correctly, sending status failed with error: ", err)
+		}
+		log.Println(taskName+" did not exit correctly, error: ", err)
+		log.Println(stderr.String())
+		return err, stderr.Bytes()
+	}
+
+	if err = c.SendStatus(taskName+" completed", err); err != nil {
+		log.Println(taskName+" completed, sending status failed with error: ", err)
+	}
+
+	return nil, stdout.Bytes()
 }
 
 // BehaviorAnalysis Runs malware sample
 // Executer specifies if the sample should be run by a specific program
 // For example, some samples needs to be run as 'python2 sample.py'.
 // If executer is not specified, the analysis will assume it should be executed with dot forward slash, i.e './'
-func (c *Collection) BehaviorAnalysis(executer string) {
+func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string) {
 	var commando string
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
 
 	if _, err := os.Stat("/tmp/binary"); os.IsNotExist(err) {
 		log.Println("Malware sample does not exist")
@@ -105,54 +158,17 @@ func (c *Collection) BehaviorAnalysis(executer string) {
 		commando = fmt.Sprintf("./tmp/binary")
 	}
 
-	cmd := exec.Command("sudo", "staprun", "-c", commando, "/home/vagrant/stp-scripts/sandlada.ko")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := c.SendStatus("Behavior analysis started", nil); err != nil {
-		log.Println("Could not send status that behavior analysis started, error: ", err)
-	}
-
-	err := cmd.Start()
-
+	command := []string{"staprun", "-c", commando, "/home/vagrant/stp-scripts/sandlada.ko"}
+	err, output := c.runCommand(ctx, "Behavior Analysis", command)
 	if err != nil {
-		if err = c.SendStatus("Could not start behavior analysis", err); err != nil {
-			log.Println("Behavior analysis did not start, sending status failed with error: ", err)
-		}
-		log.Println("Could not start command, error: ", err)
-		log.Println(stderr.String())
-		return
-	}
-
-	log.Printf("Waiting for command to finish...")
-	err = cmd.Wait()
-
-	if err != nil {
-		if err = c.SendStatus("Behavior analysis did not exit correctly", err); err != nil {
-			log.Println("Behavior analysis did not exit correctly, sending status failed with error: ", err)
-		}
-		log.Println("Behavior analysis did not exit correctly, error: ", err)
-		log.Println(stderr.String())
-		return
-	}
-
-	if err = c.SendStatus("Behavior analysis completed", err); err != nil {
-		log.Println("Behavior analysis completed, sending status failed with error: ", err)
-	}
-
-	log.Printf("Command finished successfully")
-
-	statusCode, err := c.SendData(stdout.Bytes(), "behavior.txt")
-	if err != nil {
-		log.Println("Could not send behavior analysis output to collection server, error: ", err)
-		return
-		// if this happens, save to disk instead?
-	}
-
-	if statusCode == 200 {
-		log.Println("Behavior analysis result sent to collection server!")
+		log.Println("Behavior Analysis failed, error: ", err)
+		log.Println("STDOUT: ", output)
 	} else {
-		log.Printf("Behavior analysis result was sent but not processed correctly. Expected status code 200, got %d", statusCode)
+		log.Printf("Behavior Analysis finished successfully")
+	}
+
+	if err := ioutil.WriteFile("/tmp/behave.txt", output, 0644); err != nil {
+		log.Println("Could not write file, error: ", err)
 	}
 
 }
