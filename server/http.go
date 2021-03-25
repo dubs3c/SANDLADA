@@ -97,3 +97,54 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Saved result to %s", filename)
 	w.WriteHeader(http.StatusOK)
 }
+
+// FinishAnalysis notifies the server that a specific analysis is complete.
+// The will then attempt to reset the corresponding VM.
+func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
+
+	if req.Method != "GET" {
+		log.Println("Method not supported!!")
+		errString := fmt.Sprintf("'%s' http method is not supported. Please use GET.", req.Method)
+		w.Write([]byte(errString))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	requestIPAndPort := req.RemoteAddr
+
+	if requestIPAndPort == "" {
+		log.Println("Could not extract remote IP address")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	requestIP := strings.Split(requestIPAndPort, ":")[0]
+
+	// any active transfers will be terminated, must make sure no transfers are being made
+	// maybe agent can also terminate requests
+	// But the server should most def make sure nothing is going on when shutting down VM
+
+	// Modify *Options to include a shutdown channel. This channel will be used to notify
+	// the HTTP server that its time to die. Once server is turned off, the code below should run.
+	// This means that the server needs to send back that server is now turned off
+
+	// Notify server to shutdown...
+	o.Shutdown <- true
+
+	go func() {
+		<-o.Shutdown
+		for _, vm := range o.VMInfo {
+			if strings.Split(vm.IP, ":")[0] == requestIP {
+				if err := vm.Stop(); err != nil {
+					log.Println("Could not revert VM to latest snapshot, error:", err)
+					return
+				}
+				log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
+				return
+			}
+		}
+		log.Printf("IP %s was not found. Can not revert VM...", requestIP)
+	}()
+
+	w.WriteHeader(http.StatusOK)
+}

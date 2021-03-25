@@ -64,6 +64,27 @@ func (c *Collection) ReceiveTransfer(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetRequest sends a GET request to a given endpoint
+func GetRequest(url string, endpoint string) (int, error) {
+	addr := fmt.Sprintf("%s/%s/", url, endpoint)
+	r, err := http.NewRequest("GET", addr, bytes.NewBuffer([]byte{}))
+
+	if err != nil {
+		log.Println("Error creating collection request, error:", err)
+		return 0, err
+	}
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
+
+}
+
 func (c *Collection) letsGo() {
 	d := 120 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), d)
@@ -83,12 +104,13 @@ func (c *Collection) letsGo() {
 	log.Println(ctx.Err())
 
 	files := []string{"capture.pcap", "behave.txt", "yara.txt", "objdump.txt", "readelf.txt"}
+	dir := "/tmp/"
 
 	for _, v := range files {
 		go func(filename string) {
-			out, err := ioutil.ReadFile("/tmp/" + filename)
+			out, err := ioutil.ReadFile(dir + filename)
 			if err != nil {
-				log.Println("Could not read file", "/tmp/"+filename)
+				log.Println("Could not read file", dir+filename)
 				return
 			} else {
 				if code, err := c.SendData(out, filename); err != nil {
@@ -98,6 +120,19 @@ func (c *Collection) letsGo() {
 				log.Printf("File %s sent to collection server", filename)
 			}
 		}(v)
+	}
+
+	code, err := GetRequest(c.Server, "finished")
+
+	if err != nil {
+		log.Println("Error notifying server that the analysis is finished. Error:", err)
+		return
+	}
+
+	if code == 200 {
+		log.Println("Server notified that analysis is complete. This VM will now shutdown...")
+	} else {
+		log.Printf("Server returned %d when trying to notify that analysis is complete. Expected 200\n", code)
 	}
 }
 

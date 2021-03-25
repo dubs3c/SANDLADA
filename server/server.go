@@ -27,6 +27,8 @@ type Options struct {
 	LocalPort int
 	Result    string
 	Sample    string
+	VMInfo    []provider.VMInfo
+	Shutdown  chan bool
 }
 
 // IsAlive tries to contact the agent running inside the VM
@@ -124,6 +126,7 @@ func httpServer(opts Options) *http.Server {
 
 	router.HandleFunc("/status/", opts.ReceiveStatusUpdate)
 	router.HandleFunc("/collection/", opts.CollectData)
+	router.HandleFunc("/finished/", opts.FinishAnalysis)
 
 	HTTPServer := &http.Server{
 		Addr:           "0.0.0.0:" + strconv.Itoa(opts.LocalPort),
@@ -154,6 +157,8 @@ func StartServer(opts Options) {
 		Snapshot: snapshot,
 		IP:       cfg.Section(opts.AgentVM).Key("ip").String(),
 	}
+
+	opts.VMInfo = append(opts.VMInfo, *vmInfo)
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo
@@ -227,29 +232,37 @@ func StartServer(opts Options) {
 	//go scanner()
 
 	idleConnsClosed := make(chan struct{})
+
 	go func() {
 		sigint := make(chan os.Signal, 1)
 		signal.Notify(sigint, os.Interrupt)
 		<-sigint
-
-		// We received an interrupt signal, shut down.
-		if err := HTTPServer.Shutdown(context.Background()); err != nil {
-			// Error from closing listeners, or context timeout:
-			log.Printf("Error shutting down HTTP server: %v", err)
-		}
-		log.Println("Shutting down HTTP server...")
-		close(idleConnsClosed)
+		shutdown(HTTPServer, idleConnsClosed)
 	}()
 
-	// sätt detta i en coroutine
+	go func() {
+		// Analysis is finished, gracefully shutdown server
+		<-opts.Shutdown
+		shutdown(HTTPServer, idleConnsClosed)
+		opts.Shutdown <- true
+	}()
+
 	log.Println("Starting collection server...")
 	if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
 		// Error starting or closing listener:
 		log.Fatalf("HTTP server ListenAndServe: %v", err)
 	}
 
-	log.Println("Blocking????")
-
 	<-idleConnsClosed
 
+}
+
+func shutdown(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
+	// We received an interrupt signal, shut down.
+	if err := HTTPServer.Shutdown(context.Background()); err != nil {
+		// Error from closing listeners, or context timeout:
+		log.Printf("Error shutting down HTTP server: %v", err)
+	}
+	log.Println("Shutting down HTTP server...")
+	close(idleConnsClosed)
 }

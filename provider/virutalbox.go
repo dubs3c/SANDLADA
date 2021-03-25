@@ -23,6 +23,7 @@ type VMInfo struct {
 	Path     string
 	Snapshot string
 	IP       string
+	State    string
 }
 
 // Start - Start a virtual machine
