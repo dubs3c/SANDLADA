@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,7 +76,7 @@ func GetRequest(url string, endpoint string) (int, error) {
 	}
 
 	client := &http.Client{
-		Timeout: 3 * time.Second,
+		Timeout: 5 * time.Second,
 	}
 	resp, err := client.Do(r)
 	if err != nil {
@@ -86,7 +87,7 @@ func GetRequest(url string, endpoint string) (int, error) {
 }
 
 func (c *Collection) letsGo() {
-	d := 120 * time.Second
+	d := 300 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
 
@@ -106,21 +107,27 @@ func (c *Collection) letsGo() {
 	files := []string{"capture.pcap", "behave.txt", "yara.txt", "objdump.txt", "readelf.txt"}
 	dir := "/tmp/"
 
+	wg := sync.WaitGroup{}
+
 	for _, v := range files {
-		go func(filename string) {
+		wg.Add(1)
+		go func(filename string, wg *sync.WaitGroup) {
 			out, err := ioutil.ReadFile(dir + filename)
 			if err != nil {
 				log.Println("Could not read file", dir+filename)
-				return
 			} else {
 				if code, err := c.SendData(out, filename); err != nil {
 					log.Printf("Could not send file %s. Got status code %d. Error: %v", filename, code, err)
-					return
+				} else {
+					log.Printf("File %s sent to collection server", filename)
 				}
-				log.Printf("File %s sent to collection server", filename)
 			}
-		}(v)
+			wg.Done()
+		}(v, &wg)
 	}
+
+	// Wait for goroutines to finish
+	wg.Wait()
 
 	code, err := GetRequest(c.Server, "finished")
 

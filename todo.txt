@@ -1,2 +1,0 @@
-
-* När jag revertar en VM efter att analysen blivit klar, måste jag se till att det inte finns några aktiva anslutningar till servern, annars kanske jag tappar data.

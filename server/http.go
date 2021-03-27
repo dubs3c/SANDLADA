@@ -120,31 +120,9 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 
 	requestIP := strings.Split(requestIPAndPort, ":")[0]
 
-	// any active transfers will be terminated, must make sure no transfers are being made
-	// maybe agent can also terminate requests
-	// But the server should most def make sure nothing is going on when shutting down VM
-
-	// Modify *Options to include a shutdown channel. This channel will be used to notify
-	// the HTTP server that its time to die. Once server is turned off, the code below should run.
-	// This means that the server needs to send back that server is now turned off
-
 	// Notify server to shutdown...
-	o.Shutdown <- true
-
-	go func() {
-		<-o.Shutdown
-		for _, vm := range o.VMInfo {
-			if strings.Split(vm.IP, ":")[0] == requestIP {
-				if err := vm.Stop(); err != nil {
-					log.Println("Could not revert VM to latest snapshot, error:", err)
-					return
-				}
-				log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
-				return
-			}
-		}
-		log.Printf("IP %s was not found. Can not revert VM...", requestIP)
-	}()
+	log.Println("Notify to shutdown HTTP server...")
+	o.AnalysisFinished <- requestIP
 
 	w.WriteHeader(http.StatusOK)
 }

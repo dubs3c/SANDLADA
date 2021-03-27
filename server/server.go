@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dubs3c/SANDLADA/provider"
@@ -20,15 +21,15 @@ import (
 
 // Options options for server mode
 type Options struct {
-	AgentVM   string
-	AgentIP   string
-	Config    string
-	Database  string
-	LocalPort int
-	Result    string
-	Sample    string
-	VMInfo    []provider.VMInfo
-	Shutdown  chan bool
+	AgentVM          string
+	AgentIP          string
+	Config           string
+	Database         string
+	LocalPort        int
+	Result           string
+	Sample           string
+	VMInfo           []provider.VMInfo
+	AnalysisFinished chan string
 }
 
 // IsAlive tries to contact the agent running inside the VM
@@ -159,6 +160,7 @@ func StartServer(opts Options) {
 	}
 
 	opts.VMInfo = append(opts.VMInfo, *vmInfo)
+	opts.AnalysisFinished = make(chan string, 1)
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo
@@ -228,41 +230,66 @@ func StartServer(opts Options) {
 		log.Println("Analysis has been started...")
 	}
 
-	// interactive mode
-	//go scanner()
-
 	idleConnsClosed := make(chan struct{})
 
-	go func() {
+	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
 		sigint := make(chan os.Signal, 1)
 		signal.Notify(sigint, os.Interrupt)
 		<-sigint
-		shutdown(HTTPServer, idleConnsClosed)
-	}()
+		log.Println("CTRL+C detected, shutting down")
+		shutdown(HTTPServer)
+		close(idleConnsClosed)
+	}(HTTPServer, idleConnsClosed)
+
+	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
+		// Analysis is finished, gracefully shutdown server
+		requestIP := <-opts.AnalysisFinished
+		shutdown(HTTPServer)
+		opts.shutdownVm(requestIP)
+		close(idleConnsClosed)
+	}(HTTPServer, idleConnsClosed)
 
 	go func() {
-		// Analysis is finished, gracefully shutdown server
-		<-opts.Shutdown
-		shutdown(HTTPServer, idleConnsClosed)
-		opts.Shutdown <- true
+		log.Println("Starting collection server...")
+		if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
+			// Error starting or closing listener:
+			log.Fatalf("HTTP server ListenAndServe: %v", err)
+		}
 	}()
-
-	log.Println("Starting collection server...")
-	if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
-		// Error starting or closing listener:
-		log.Fatalf("HTTP server ListenAndServe: %v", err)
-	}
 
 	<-idleConnsClosed
 
+	log.Println("Server done")
+
 }
 
-func shutdown(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
+func shutdown(HTTPServer *http.Server) {
 	// We received an interrupt signal, shut down.
-	if err := HTTPServer.Shutdown(context.Background()); err != nil {
+	log.Println("Shutting down HTTP server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := HTTPServer.Shutdown(ctx); err != nil {
 		// Error from closing listeners, or context timeout:
 		log.Printf("Error shutting down HTTP server: %v", err)
 	}
-	log.Println("Shutting down HTTP server...")
-	close(idleConnsClosed)
+}
+
+func (o *Options) shutdownVm(requestIP string) {
+	log.Println("Shutting down VMs")
+	found := false
+	for _, vm := range o.VMInfo {
+		if strings.Split(vm.IP, ":")[0] == requestIP {
+			found = true
+			/*if err := vm.Stop(); err != nil {
+				log.Println("Could not revert VM to latest snapshot, error:", err)
+				break
+			}*/
+			log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
+			break
+		}
+	}
+
+	if !found {
+		log.Printf("IP %s was not found. Can not revert VM...", requestIP)
+	}
 }
