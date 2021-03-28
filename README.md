@@ -15,6 +15,35 @@ _(**Alpha version, still in active development**)_
 * Behavior Analysis thanks to systemtap *(and cuckoo sandbox)*
 * Network packet capturing
 
+```
+PS C:\> .\sandlada.exe
+
+SANDLÅDA - The Dynamic Malware Analysis Lab
+
+Usage:
+  sandlada server|agent|version [options]
+
+Server options:
+  -s,     --sample    Malware sample to analyse
+  -vm,    --agent-vm  VM to use for analysis, read from conffig file
+  -ip,    --agent-ip  IP of agent to send sample to
+  -r,     --result    Folder location to store analysis results in. Default ~/.sandlada/result
+  -db,    --database  Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db
+  -c,     --config    Configuration file to read from. Default ~/.sandlada/config.ini
+  -lp,    --lport     Local port to listen on. Default 9001
+
+Agent options:
+  -srv,   --server    Server IP to send data to
+  -lp,    --lport     Local port to listen on. Default 9001
+
+Version: Print version
+
+Examples:
+  sandlada server -s malware.py -vm trinity -lp 9001
+  sandlada agent --server 192.168.1.25:9001 --lport 9001
+  sandlada version
+```
+
 ## How does it work?
 
 You have two components, the collection server and the agent. The collection server runs on the host machine while the agent runs inside a virtual machine. Malware samples and necessary files are transferred to the VM via the collection server using HTTP. Once everything is in place, the agent will run the analysis by executing packet capturing, static analysis tools and finally the malware itself. All communication between agent and collection server is done via HTTP. Different VM providers have interfaces for directly communicating with VM, but it was decided to use HTTP and not care about what each individual VM provider offers.
