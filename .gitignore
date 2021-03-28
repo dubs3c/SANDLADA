@@ -3,3 +3,4 @@
 *.log
 test.sh
 main
+config.ini

@@ -158,7 +158,7 @@ func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string) {
 		commando = fmt.Sprintf("./tmp/binary")
 	}
 
-	command := []string{"staprun", "-c", commando, "/home/vagrant/stp-scripts/sandlada.ko"}
+	command := []string{"staprun", "-R", "-c", commando, "/opt/sandlada.ko"}
 	err, output := c.runCommand(ctx, "Behavior Analysis", command)
 	if err != nil {
 		log.Println("Behavior Analysis failed, error: ", err)

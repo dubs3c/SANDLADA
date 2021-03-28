@@ -95,7 +95,7 @@ func (c *Collection) letsGo() {
 	go c.StaticAnalysis(ctx)
 
 	go func() {
-		c.BehaviorAnalysis(ctx, "python2")
+		c.BehaviorAnalysis(ctx, "python2.7")
 		cancel()
 	}()
 

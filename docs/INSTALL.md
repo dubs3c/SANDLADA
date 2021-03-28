@@ -1,0 +1,59 @@
+
+# Installing SANDLÅDA
+
+## Preparing the linux guest machine
+
+SANDLÅDA was developed and tested with Ubuntu 18.01 "Bionic". Support for Windows is still in development.
+
+1. Download Ubuntu Bionic from here [https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso](https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso)
+2. Configure the VM with at least 15 GB disk and 1 GB RAM
+
+Once the virtual machine has been configured and installed, run the following installation script:
+
+```bash
+#!/bin/bash
+
+##############
+#  SANDLÅDA  #
+### dubs3c ###
+
+# Install dependencies
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C8CAB6595FDFF622
+
+codename=$(lsb_release -cs)
+sudo tee /etc/apt/sources.list.d/ddebs.list << EOF
+  deb http://ddebs.ubuntu.com/ ${codename}          main restricted universe multiverse
+  #deb http://ddebs.ubuntu.com/ ${codename}-security main restricted universe multiverse
+  deb http://ddebs.ubuntu.com/ ${codename}-updates  main restricted universe multiverse
+  deb http://ddebs.ubuntu.com/ ${codename}-proposed main restricted universe multiverse
+EOF
+
+sudo apt-get update
+sudo apt-get install linux-image-$(uname -r)-dbgsym python2.7 coreutils-dbgsym fakeroot build-essential crash kexec-tools makedumpfile kernel-wedge elfutils libdw-dev -y
+
+
+# Install Systemtap
+wget https://sourceware.org/systemtap/ftp/releases/systemtap-4.4.tar.gz
+gunzip -d systemtap-4.4.tar.gz
+tar -xf systemtap-4.4.tar
+cd systemtap-4.4/
+./configure
+make
+sudo make install
+
+cd ..
+rm -rf systemtap-4.4/
+
+# Compile Systemtap script
+wget https://raw.githubusercontent.com/cuckoosandbox/cuckoo/master/stuff/systemtap/strace.stp
+sudo stap -p4 -r $(uname -r) strace.stp -m sandlada -v
+sudo mv sandlada.ko /opt/
+
+###############################
+#         THE END             #
+###############################
+```
+
+Assuming everything went fine, create a snapshot. Now you should have a good base VM for running dynamic malware analyses. The snapshot enures you can always revert back to a clean environment.
+
+## Preparing the Windows guest machine

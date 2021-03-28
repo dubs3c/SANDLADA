@@ -44,6 +44,8 @@ Examples:
   sandlada version
 ```
 
+![demo](docs/demo.gif)
+
 ## How does it work?
 
 You have two components, the collection server and the agent. The collection server runs on the host machine while the agent runs inside a virtual machine. Malware samples and necessary files are transferred to the VM via the collection server using HTTP. Once everything is in place, the agent will run the analysis by executing packet capturing, static analysis tools and finally the malware itself. All communication between agent and collection server is done via HTTP. Different VM providers have interfaces for directly communicating with VM, but it was decided to use HTTP and not care about what each individual VM provider offers.
@@ -52,7 +54,7 @@ As long as the agent and the collection server can communicate, you can run SAND
 
 ## Documentation
 
-Full documentation can be found [here]().
+Full documentation can be found [here](docs/).
 
 ## TODO
 

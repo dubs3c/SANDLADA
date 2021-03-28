@@ -259,14 +259,14 @@ func StartServer(opts Options) {
 
 	<-idleConnsClosed
 
-	log.Println("Server done")
+	log.Println("Server done, bye!")
 
 }
 
 func shutdown(HTTPServer *http.Server) {
 	// We received an interrupt signal, shut down.
 	log.Println("Shutting down HTTP server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 	if err := HTTPServer.Shutdown(ctx); err != nil {
 		// Error from closing listeners, or context timeout:

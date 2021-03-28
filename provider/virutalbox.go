@@ -28,7 +28,7 @@ type VMInfo struct {
 
 // Start - Start a virtual machine
 func (m *VMInfo) Start() error {
-	cmd := exec.Command("VBoxManage", "startvm", m.UUID, "--type", "headless")
+	cmd := exec.Command("VBoxManage", "startvm", m.Name, "--type", "headless")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
