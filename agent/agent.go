@@ -1,19 +1,84 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Options options for agent mode
 type Options struct {
 	Server    string
 	LocalPort int
+}
+
+// Task contains the state of each step in the analysis flow
+type Task struct {
+	StaticAnalysis   string
+	BehaviorAnalysis string
+	NetworkSniffing  string
+}
+
+// Collection contains information about the collection server
+// and the ID of a given analysis
+type Collection struct {
+	Server   string
+	UUID     uuid.UUID
+	Task     *Task
+	Executer string
+	FileType string
+}
+
+// SendStatus sends a status update to the collection server
+// for a given analysis project
+func (c *Collection) SendStatus(status string, statusError error) error {
+	data := url.Values{}
+	data.Set("message", status)
+	if statusError != nil {
+		data.Set("error", statusError.Error())
+	} else {
+		data.Set("error", "")
+	}
+	body := strings.NewReader(data.Encode())
+	collectionServer := fmt.Sprintf("%s/status/%s", c.Server, c.UUID)
+	_, err := http.Post(collectionServer, "application/x-www-form-urlencoded", body)
+	return err
+}
+
+// SendData sends collected data to the collection server running on the host machine
+func (c *Collection) SendData(content []byte, filename string) (int, error) {
+	reader := bytes.NewReader(content)
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	part, _ := w.CreateFormFile("file", filename)
+	io.Copy(part, reader)
+	w.Close()
+	r, err := http.NewRequest("POST", c.Server+"/collection/"+c.UUID.String(), body)
+	if err != nil {
+		log.Println("Error creating collection request, error:", err)
+		return 0, err
+	}
+	r.Header.Add("Content-Type", w.FormDataContentType())
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
 }
 
 // StartAgent starts SANDLÅDA in agent mode

@@ -7,8 +7,7 @@ SANDLÅDA was developed and tested with Ubuntu 18.01 "Bionic". Support for Windo
 
 1. Download Ubuntu Bionic from here [https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso](https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso)
 2. Configure the VM with at least 15 GB disk and 1 GB RAM
-
-Once the virtual machine has been configured and installed, run the following installation script:
+3. Once the virtual machine has been configured and installed, run the following installation script:
 
 ```bash
 #!/bin/bash
@@ -52,6 +51,13 @@ sudo mv sandlada.ko /opt/
 ###############################
 #         THE END             #
 ###############################
+```
+
+4. Transfer the `sandlada` executable to your guest VM
+5. Set the agent to start on startup
+```
+$ crontab -e
+@reboot /path/to/sandlada agent -s 192.168.1.25:9001 -lp 9001
 ```
 
 Assuming everything went fine, create a snapshot. Now you should have a good base VM for running dynamic malware analyses. The snapshot enures you can always revert back to a clean environment.

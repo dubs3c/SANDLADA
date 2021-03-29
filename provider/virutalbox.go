@@ -37,7 +37,7 @@ func (m *VMInfo) Start() error {
 
 // Stop - Stop a virtual machine
 func (m *VMInfo) Stop() error {
-	cmd := exec.Command("VBoxManage", "controlvm", m.UUID, "poweroff")
+	cmd := exec.Command("VBoxManage", "controlvm", m.Name, "poweroff")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (m *VMInfo) Stop() error {
 
 // Pause - Pause a virtual machine
 func (m *VMInfo) Pause() error {
-	cmd := exec.Command("VBoxManage", "controlvm", m.UUID, "pause")
+	cmd := exec.Command("VBoxManage", "controlvm", m.Name, "pause")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (m *VMInfo) Pause() error {
 
 // Revert - Revert virtual machine to latest snapshot
 func (m *VMInfo) Revert() error {
-	cmd := exec.Command("VBoxManage", "snapshot", m.UUID, "restorecurrent")
+	cmd := exec.Command("VBoxManage", "snapshot", m.Name, "restorecurrent")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (m *VMInfo) Revert() error {
 
 // Info - Show info about virtual machine
 func (m *VMInfo) Info() ([]byte, error) {
-	cmd := exec.Command("VBoxManage", "showvminfo", m.UUID)
+	cmd := exec.Command("VBoxManage", "showvminfo", m.Name)
 	if err := cmd.Run(); err != nil {
 		return []byte{}, err
 	}

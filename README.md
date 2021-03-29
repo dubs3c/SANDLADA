@@ -28,6 +28,7 @@ Server options:
   -vm,    --agent-vm  VM to use for analysis, read from conffig file
   -ip,    --agent-ip  IP of agent to send sample to
   -r,     --result    Folder location to store analysis results in. Default ~/.sandlada/result
+  -e,     --executor  Run malware with specific command, e.g. "python2.7"
   -db,    --database  Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db
   -c,     --config    Configuration file to read from. Default ~/.sandlada/config.ini
   -lp,    --lport     Local port to listen on. Default 9001
@@ -39,7 +40,7 @@ Agent options:
 Version: Print version
 
 Examples:
-  sandlada server -s malware.py -vm trinity -lp 9001
+  sandlada server -s malware.py -e python2 -vm trinity -lp 9001
   sandlada agent --server 192.168.1.25:9001 --lport 9001
   sandlada version
 ```
@@ -61,9 +62,11 @@ Full documentation can be found [here](docs/).
 - [X] Linux guest support
 - [X] Virtualbox support
 - [ ] Windows guest support
-- [ ] INetSim functionality
 - [ ] Custom analysis tooling
+- [ ] INetSim functionality *(although you can run this yourself)*
+- [ ] HTTPS communication
 - [ ] Web interface
+- [ ] Sandbox Anti-detection
 - [ ] Vmware ESXi support*
 - [ ] QUEMU support*
 - [ ] KVM support*

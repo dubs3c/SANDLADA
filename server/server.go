@@ -28,6 +28,7 @@ type Options struct {
 	LocalPort        int
 	Result           string
 	Sample           string
+	Executor         string
 	VMInfo           []provider.VMInfo
 	AnalysisFinished chan string
 }
@@ -200,7 +201,6 @@ func StartServer(opts Options) {
 			}
 			time.Sleep(3 * time.Second)
 		}
-		time.Sleep(20 * time.Second)
 	} else {
 		log.Println("VM is running...")
 	}
@@ -220,7 +220,7 @@ func StartServer(opts Options) {
 
 	HTTPServer := httpServer(opts)
 
-	status, err := GetRequest(vmInfo.IP, "start")
+	status, err := GetRequest(vmInfo.IP, "start?executor="+opts.Executor)
 
 	if err != nil {
 		log.Println("Could not start analysis automatically, please start manually")
@@ -280,10 +280,16 @@ func (o *Options) shutdownVm(requestIP string) {
 	for _, vm := range o.VMInfo {
 		if strings.Split(vm.IP, ":")[0] == requestIP {
 			found = true
-			/*if err := vm.Stop(); err != nil {
+			if err := vm.Stop(); err != nil {
+				log.Println("Could not stop VM, error:", err)
+				break
+			}
+
+			if err := vm.Revert(); err != nil {
 				log.Println("Could not revert VM to latest snapshot, error:", err)
 				break
-			}*/
+			}
+
 			log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
 			break
 		}

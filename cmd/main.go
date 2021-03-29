@@ -31,6 +31,8 @@ func main() {
 	serverMode.StringVar(&srvOpts.Config, "c", "~/.sandlada/config.ini", "Configuration file to read from. Default ~/.sandlada/config.ini")
 	serverMode.StringVar(&srvOpts.Result, "result", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
 	serverMode.StringVar(&srvOpts.Result, "r", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
+	serverMode.StringVar(&srvOpts.Executor, "executor", "", "Run malware with specific command, e.g. \"python2.7\"")
+	serverMode.StringVar(&srvOpts.Executor, "e", "", "Run malware with specific command, e.g. \"python2.7\"")
 	serverMode.IntVar(&srvOpts.LocalPort, "lport", 9001, "Local port to listen on. Default 9001")
 	serverMode.IntVar(&srvOpts.LocalPort, "lp", 9001, "Local port to listen on. Default 9001")
 
@@ -50,6 +52,7 @@ func main() {
 		h += "  -vm,    --agent-vm  " + serverMode.Lookup("agentVM").Usage + "\n"
 		h += "  -ip,    --agent-ip  " + serverMode.Lookup("agentIP").Usage + "\n"
 		h += "  -r,     --result    " + serverMode.Lookup("result").Usage + "\n"
+		h += "  -e,     --executor  " + serverMode.Lookup("executor").Usage + "\n"
 		h += "  -db,    --database  " + serverMode.Lookup("database").Usage + "\n"
 		h += "  -c,     --config    " + serverMode.Lookup("config").Usage + "\n"
 		h += "  -lp,    --lport     " + agentMode.Lookup("lport").Usage + "\n"
@@ -59,7 +62,7 @@ func main() {
 		h += "\nVersion: Print version\n"
 
 		h += "\nExamples:\n"
-		h += "  sandlada server -s malware.py -vm trinity -lp 9001\n"
+		h += "  sandlada server -s malware.py -e python2 -vm trinity -lp 9001\n"
 		h += "  sandlada agent --server 192.168.1.25:9001 --lport 9001\n"
 		h += "  sandlada version\n\n"
 

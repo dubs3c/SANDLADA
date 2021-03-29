@@ -4,83 +4,48 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"mime/multipart"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
-
-	"github.com/google/uuid"
+	"sync"
 )
 
-// Task contains the state of each step in the analysis flow
-type Task struct {
-	StaticAnalysis   string
-	BehaviorAnalysis string
-	NetworkSniffing  string
-}
-
-// Collection contains information about the collection server
-// and the ID of a given analysis
-type Collection struct {
-	Server   string
-	UUID     uuid.UUID
-	Task     *Task
-	Executer string
-}
-
-// SendStatus sends a status update to the collection server
-// for a given analysis project
-func (c *Collection) SendStatus(status string, statusError error) error {
-	data := url.Values{}
-	data.Set("message", status)
-	if statusError != nil {
-		data.Set("error", statusError.Error())
-	} else {
-		data.Set("error", "")
-	}
-	body := strings.NewReader(data.Encode())
-	collectionServer := fmt.Sprintf("%s/status/%s", c.Server, c.UUID)
-	_, err := http.Post(collectionServer, "application/x-www-form-urlencoded", body)
-	return err
-}
-
-// SendData sends collected data to the collection server running on the host machine
-func (c *Collection) SendData(content []byte, filename string) (int, error) {
-	reader := bytes.NewReader(content)
-	body := &bytes.Buffer{}
-	w := multipart.NewWriter(body)
-	part, _ := w.CreateFormFile("file", filename)
-	io.Copy(part, reader)
-	w.Close()
-	r, err := http.NewRequest("POST", c.Server+"/collection/"+c.UUID.String(), body)
-	if err != nil {
-		log.Println("Error creating collection request, error:", err)
-		return 0, err
-	}
-	r.Header.Add("Content-Type", w.FormDataContentType())
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-	resp, err := client.Do(r)
-	if err != nil {
-		return 0, err
-	}
-	return resp.StatusCode, err
-}
-
 // StaticAnalysis Performs static analysis on the malware sample
-func (c *Collection) StaticAnalysis(ctx context.Context) {
+func (c *Collection) StaticAnalysis(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	log.Println("Running static analysis")
 	// yara
-	// objdump if linux
-	// readelf if linux
-	log.Println("static analysis complete")
+
+	// Commands to run, prefixed with which filetype the command expects
+	var commands [][]string
+	commands = append(commands, []string{"elf", "objdump -D /tmp/binary"})
+	commands = append(commands, []string{"elf", "readelf -a /tmp/binary"})
+	commands = append(commands, []string{"any", "strings /tmp/binary"})
+
+	for _, cmdArray := range commands {
+		fileType := cmdArray[0]
+		cmd := cmdArray[1]
+		if fileType == c.FileType || fileType == "any" {
+			cmdSplit := strings.Split(cmd, " ")
+			err, out := c.runCommand(ctx, cmdSplit[0], cmdSplit)
+			if err != nil {
+				log.Println("Readelf command failed, error:", err)
+			} else {
+				filename := fmt.Sprintf("/tmp/%s.txt", cmdSplit[0])
+				if err := ioutil.WriteFile(filename, out, 0755); err != nil {
+					log.Printf("Could not write output from %s to /tmp/%s.txt, error: %v", filename, filename, err)
+				}
+			}
+		} else {
+			log.Printf("Command '%s' skipped because filetype '%s' did not match binary filetype '%s'", cmd, fileType, c.FileType)
+		}
+
+	}
+
+	log.Println("Static analysis complete")
 }
 
 // BeginNetworkSniffing Runs packet capturing
@@ -141,7 +106,9 @@ func (c *Collection) runCommand(ctx context.Context, taskName string, commando [
 // Executer specifies if the sample should be run by a specific program
 // For example, some samples needs to be run as 'python2 sample.py'.
 // If executer is not specified, the analysis will assume it should be executed with dot forward slash, i.e './'
-func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string) {
+func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	var commando string
 
 	if _, err := os.Stat("/tmp/binary"); os.IsNotExist(err) {
@@ -155,7 +122,7 @@ func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string) {
 	if len(executer) > 0 {
 		commando = fmt.Sprintf("%s /tmp/binary", executer)
 	} else {
-		commando = fmt.Sprintf("./tmp/binary")
+		commando = "./tmp/binary"
 	}
 
 	command := []string{"staprun", "-R", "-c", commando, "/opt/sandlada.ko"}
@@ -163,8 +130,6 @@ func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string) {
 	if err != nil {
 		log.Println("Behavior Analysis failed, error: ", err)
 		log.Println("STDOUT: ", output)
-	} else {
-		log.Printf("Behavior Analysis finished successfully")
 	}
 
 	if err := ioutil.WriteFile("/tmp/behave.txt", output, 0644); err != nil {

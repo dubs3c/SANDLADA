@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/h2non/filetype"
 )
 
 // Status returns the status of a scan
@@ -54,6 +55,14 @@ func (c *Collection) ReceiveTransfer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	fileType, err := filetype.Archive(data.Bytes())
+	if err != nil {
+		log.Println("Could not extract filetype")
+		c.FileType = "unknown"
+	} else {
+		c.FileType = fileType.Extension
+	}
+
 	if err = ioutil.WriteFile("/tmp/binary", data.Bytes(), 0777); err != nil {
 		log.Println("Error reading data: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -87,31 +96,38 @@ func GetRequest(url string, endpoint string) (int, error) {
 }
 
 func (c *Collection) letsGo() {
-	d := 300 * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), d)
-	defer cancel()
+	// Specify how long the analysis can run
+	maxDurationForAnalysis := 300 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), maxDurationForAnalysis)
 
+	tasksWaitGroup := &sync.WaitGroup{}
+	tasksWaitGroup.Add(2)
+
+	// The agent should wait for these
 	go c.BeginNetworkSniffing(ctx)
-	go c.StaticAnalysis(ctx)
+	go c.StaticAnalysis(ctx, tasksWaitGroup)
+	go c.BehaviorAnalysis(ctx, c.Executer, tasksWaitGroup)
 
-	go func() {
-		c.BehaviorAnalysis(ctx, "python2.7")
-		cancel()
-	}()
+	// Wait for tasks to finished
+	tasksWaitGroup.Wait()
+	cancel()
 
-	// Wait until behavior analysis has canceled or timeout is reached
-	<-ctx.Done()
-	log.Println("Analysis is done!")
-	log.Println(ctx.Err())
+	if ctx.Err().Error() != "context canceled" {
+		// TODO - What happens with the analysis if it timesout?
+		log.Println("Analysis timed out:", ctx.Err())
+	} else {
+		log.Println("Analysis is done!")
+	}
 
-	files := []string{"capture.pcap", "behave.txt", "yara.txt", "objdump.txt", "readelf.txt"}
+	files := []string{"capture.pcap", "behave.txt", "yara.txt", "objdump.txt", "readelf.txt", "strings.txt"}
 	dir := "/tmp/"
 
-	wg := sync.WaitGroup{}
+	wg := &sync.WaitGroup{}
 
 	for _, v := range files {
 		wg.Add(1)
 		go func(filename string, wg *sync.WaitGroup) {
+			defer wg.Done()
 			out, err := ioutil.ReadFile(dir + filename)
 			if err != nil {
 				log.Println("Could not read file", dir+filename)
@@ -122,8 +138,7 @@ func (c *Collection) letsGo() {
 					log.Printf("File %s sent to collection server", filename)
 				}
 			}
-			wg.Done()
-		}(v, &wg)
+		}(v, wg)
 	}
 
 	// Wait for goroutines to finish
@@ -146,6 +161,10 @@ func (c *Collection) letsGo() {
 // StartAnalysis kicks of analysis
 func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 	c.UUID = uuid.New()
+
+	values := req.URL.Query()
+
+	c.Executer = values.Get("executor")
 
 	log.Println("Starting analysis...")
 
