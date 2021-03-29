@@ -3,7 +3,7 @@
 
 ## Preparing the linux guest machine
 
-SANDLÅDA was developed and tested with Ubuntu 18.01 "Bionic". Support for Windows is still in development.
+SANDLÅDA was developed and tested with Ubuntu 18.04 "Bionic" and Virtualbox version 6.1.16 r140961. Support for Windows is still in development.
 
 1. Download Ubuntu Bionic from here [https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso](https://releases.ubuntu.com/18.04.5/ubuntu-18.04.5-live-server-amd64.iso)
 2. Configure the VM with at least 15 GB disk and 1 GB RAM
@@ -59,6 +59,7 @@ sudo mv sandlada.ko /opt/
 $ crontab -e
 @reboot /path/to/sandlada agent -s 192.168.1.25:9001 -lp 9001
 ```
+6. Make custom changes (optional)
 
 Assuming everything went fine, create a snapshot. Now you should have a good base VM for running dynamic malware analyses. The snapshot enures you can always revert back to a clean environment.
 
