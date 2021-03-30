@@ -1,0 +1,94 @@
+package server
+
+import (
+	"bytes"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/google/uuid"
+)
+
+func TestReceiveStatusUpdate(t *testing.T) {
+
+	opts := Options{}
+	uuid, _ := uuid.NewUUID()
+	req, err := http.NewRequest("POST", "/status/"+uuid.String(), nil)
+	values := url.Values{}
+	values["message"] = []string{"Cool message"}
+	values["error"] = []string{"oh no, this is an error"}
+
+	req.Form = values
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(opts.ReceiveStatusUpdate)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
+			status, http.StatusOK, string(rr.Body.Bytes()))
+	}
+
+}
+
+func TestTestReceiveStatusUpdateNoMessage(t *testing.T) {
+	opts := Options{}
+
+	req, err := http.NewRequest("POST", "/status/1234", nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(opts.ReceiveStatusUpdate)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusBadRequest {
+		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
+			status, http.StatusBadRequest, string(rr.Body.Bytes()))
+	}
+
+}
+
+func TestCollectData(t *testing.T) {
+	opts := Options{}
+
+	content := []byte("data")
+	filename := "yara.txt"
+
+	reader := bytes.NewReader(content)
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	part, _ := w.CreateFormFile("file", filename)
+	io.Copy(part, reader)
+	w.Close()
+
+	req, err := http.NewRequest("POST", "/collection/1234", body)
+	req.Header.Add("Content-Type", w.FormDataContentType())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(opts.CollectData)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
+			status, http.StatusOK, string(rr.Body.Bytes()))
+	}
+}

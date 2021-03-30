@@ -19,12 +19,28 @@ func (o *Options) ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) 
 		w.Write([]byte(errString))
 		return
 	}
+
 	uuid := strings.TrimPrefix(req.URL.Path, "/status/")
+
+	if uuid == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Please specify a UUID"))
+		return
+	}
+
 	message := req.FormValue("message")
 	messageError := req.FormValue("error")
+
+	if message == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Please specify a message"))
+		return
+	}
+
 	log.Printf("Received status update for %s. Message: %s", uuid, message)
+
 	if len(messageError) > 0 {
-		log.Printf("Error: %s", messageError)
+		log.Printf("Received status Error: %s", messageError)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -42,9 +58,8 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 
 	uuid := strings.TrimPrefix(req.URL.Path, "/collection/")
 	if uuid == "" {
-		log.Print("Did not receive UUID for collection request")
-		w.Write([]byte("Please specify UUID string as path parameter"))
 		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Please specify UUID string as path parameter"))
 		return
 	}
 
@@ -54,6 +69,7 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Println("Could not parse multipart form, error: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
 
@@ -62,6 +78,7 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Println("Could not parse collection data, error: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
 
@@ -74,24 +91,13 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
-	store := o.Result + "/" + uuid
-	filename := store + "/" + multiparFileHeader.Filename
+	filename := multiparFileHeader.Filename
+	fileContents := data.Bytes()
 
-	if _, err = os.Stat(store); os.IsNotExist(err) {
-
-		if err = os.MkdirAll(store, 0755); err != nil {
-			log.Printf("Could not create '%s'\n", store)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-	}
-
-	if err = ioutil.WriteFile(filename, data.Bytes(), 0755); err != nil {
+	if err := o.writeFileToDisk(uuid, filename, &fileContents); err != nil {
 		log.Printf("Could not write %s. Error: %v", filename, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
-
 	}
 
 	log.Printf("Saved result to %s", filename)
@@ -125,4 +131,22 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 	o.AnalysisFinished <- requestIP
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// writeFileToDisk Writes files sent for collection to disk
+func (o *Options) writeFileToDisk(uuid string, multiparFileHeaderFilename string, data *[]byte) error {
+	store := o.Result + "/" + uuid
+	filename := store + "/" + multiparFileHeaderFilename
+
+	if _, err := os.Stat(store); os.IsNotExist(err) {
+		if err = os.MkdirAll(store, 0755); err != nil {
+			return err
+		}
+	}
+
+	if err := ioutil.WriteFile(filename, *data, 0755); err != nil {
+		return err
+	}
+
+	return nil
 }
