@@ -88,4 +88,4 @@ Any feedback or ideas are welcome! Want to improve something? Create a pull requ
 
 ## License
 
-SANDLÅDA is made with ♥ by [@dubs3c](https://github.com/dubs3c) and is released under the GPL 3 license.
+SANDLÅDA is made with ♥ by [@dubs3c](https://github.com/dubs3c) and is released under the MIT license.
