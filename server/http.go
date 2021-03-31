@@ -13,6 +13,7 @@ import (
 
 type Writer interface {
 	WriteFile(filename string, data []byte, perm os.FileMode) error
+	MkdirAll(dir string, perm os.FileMode) error
 }
 
 type MyFileWriter struct {
@@ -141,16 +142,19 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// WriteFile implements the Writer interface that's been created so that ioutil.WriteFile can be mocked
-func (m MyFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+func (f *MyFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
 	return ioutil.WriteFile(filename, data, perm)
+}
+
+func (f *MyFileWriter) MkdirAll(dir string, perm os.FileMode) error {
+	return os.MkdirAll(dir, perm)
 }
 
 // writeFileToDisk Writes files sent for collection to disk
 func writeFileToDisk(w Writer, dir string, filename string, data *[]byte) error {
 	path := dir + "/" + filename
 
-	if err := os.MkdirAll(dir, os.ModeDir); err != nil {
+	if err := w.MkdirAll(dir, os.ModeDir); err != nil {
 		return err
 	}
 

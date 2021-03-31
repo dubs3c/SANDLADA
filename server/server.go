@@ -163,7 +163,6 @@ func StartServer(opts Options) {
 
 	opts.VMInfo = append(opts.VMInfo, *vmInfo)
 	opts.AnalysisFinished = make(chan string, 1)
-	opts.FileWriter = MyFileWriter{}
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo

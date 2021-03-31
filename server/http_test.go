@@ -62,17 +62,20 @@ func TestTestReceiveStatusUpdateNoMessage(t *testing.T) {
 
 }
 
-type FakeFileWriter struct {
+type FakeFileWriter struct{}
+
+func (f *FakeFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+	return nil
 }
 
-func (f FakeFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+func (f *FakeFileWriter) MkdirAll(dir string, perm os.FileMode) error {
 	return nil
 }
 
 func TestCollectData(t *testing.T) {
 
-	opts := Options{
-		FileWriter: FakeFileWriter{},
+	opts := &Options{
+		FileWriter: &FakeFileWriter{},
 	}
 
 	content := []byte("data")
