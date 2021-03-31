@@ -11,6 +11,13 @@ import (
 	"strings"
 )
 
+type Writer interface {
+	WriteFile(filename string, data []byte, perm os.FileMode) error
+}
+
+type MyFileWriter struct {
+}
+
 // ReceiveStatusUpdate receives status updates from the agent, e.g. what's currently running
 // or if any errors has ocurred
 func (o *Options) ReceiveStatusUpdate(w http.ResponseWriter, req *http.Request) {
@@ -93,8 +100,9 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 
 	filename := multiparFileHeader.Filename
 	fileContents := data.Bytes()
+	dest := o.Result + "/" + uuid
 
-	if err := o.writeFileToDisk(uuid, filename, &fileContents); err != nil {
+	if err := writeFileToDisk(o.FileWriter, dest, filename, &fileContents); err != nil {
 		log.Printf("Could not write %s. Error: %v", filename, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -133,18 +141,20 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// writeFileToDisk Writes files sent for collection to disk
-func (o *Options) writeFileToDisk(uuid string, multiparFileHeaderFilename string, data *[]byte) error {
-	store := o.Result + "/" + uuid
-	filename := store + "/" + multiparFileHeaderFilename
+// WriteFile implements the Writer interface that's been created so that ioutil.WriteFile can be mocked
+func (m MyFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+	return ioutil.WriteFile(filename, data, perm)
+}
 
-	if _, err := os.Stat(store); os.IsNotExist(err) {
-		if err = os.MkdirAll(store, 0755); err != nil {
-			return err
-		}
+// writeFileToDisk Writes files sent for collection to disk
+func writeFileToDisk(w Writer, dir string, filename string, data *[]byte) error {
+	path := dir + "/" + filename
+
+	if err := os.MkdirAll(dir, os.ModeDir); err != nil {
+		return err
 	}
 
-	if err := ioutil.WriteFile(filename, *data, 0755); err != nil {
+	if err := w.WriteFile(path, *data, 0755); err != nil {
 		return err
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -61,8 +62,18 @@ func TestTestReceiveStatusUpdateNoMessage(t *testing.T) {
 
 }
 
+type FakeFileWriter struct {
+}
+
+func (f FakeFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+	return nil
+}
+
 func TestCollectData(t *testing.T) {
-	opts := Options{}
+
+	opts := Options{
+		FileWriter: FakeFileWriter{},
+	}
 
 	content := []byte("data")
 	filename := "yara.txt"

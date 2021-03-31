@@ -31,6 +31,7 @@ type Options struct {
 	Executor         string
 	VMInfo           []provider.VMInfo
 	AnalysisFinished chan string
+	FileWriter       Writer
 }
 
 // IsAlive tries to contact the agent running inside the VM
@@ -162,6 +163,7 @@ func StartServer(opts Options) {
 
 	opts.VMInfo = append(opts.VMInfo, *vmInfo)
 	opts.AnalysisFinished = make(chan string, 1)
+	opts.FileWriter = MyFileWriter{}
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo
