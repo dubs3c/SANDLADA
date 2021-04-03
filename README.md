@@ -21,6 +21,7 @@ _(**Alpha version, still in active development**)_
     * Readelf
 * Behavior Analysis thanks to systemtap *(and cuckoo sandbox)*
 * Network packet capturing
+* Memory Analysis
 
 ```
 PS C:\> .\sandlada.exe
