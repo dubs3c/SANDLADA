@@ -60,7 +60,7 @@ $ crontab -e
 @reboot /path/to/sandlada agent -s 192.168.1.25:9001 -lp 9001
 ```
 6. Make custom changes (optional)
-7. Create a config file in ~/.sandlada/config.ini with the following contents:
+7. Create a config file in `~/.sandlada/config.ini` with the following contents:
 
 ```
 # ======= General settings
