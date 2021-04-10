@@ -2,22 +2,14 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"strings"
+	"time"
 )
-
-type Writer interface {
-	WriteFile(filename string, data []byte, perm os.FileMode) error
-	MkdirAll(dir string, perm os.FileMode) error
-}
-
-type MyFileWriter struct {
-}
 
 // ReceiveStatusUpdate receives status updates from the agent, e.g. what's currently running
 // or if any errors has ocurred
@@ -103,7 +95,7 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 	fileContents := data.Bytes()
 	dest := o.Result + "/" + uuid
 
-	if err := writeFileToDisk(o.FileWriter, dest, filename, &fileContents); err != nil {
+	if err := WriteFileToDisk(o.FileWriter, dest, filename, &fileContents); err != nil {
 		log.Printf("Could not write %s. Error: %v", filename, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -142,25 +134,13 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (f *MyFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
-	return ioutil.WriteFile(filename, data, perm)
-}
-
-func (f *MyFileWriter) MkdirAll(dir string, perm os.FileMode) error {
-	return os.MkdirAll(dir, perm)
-}
-
-// writeFileToDisk Writes files sent for collection to disk
-func writeFileToDisk(w Writer, dir string, filename string, data *[]byte) error {
-	path := dir + "/" + filename
-
-	if err := w.MkdirAll(dir, os.ModeDir); err != nil {
-		return err
+func ShutdownHTTPServer(HTTPServer *http.Server) {
+	// We received an interrupt signal, shut down.
+	log.Println("Shutting down HTTP server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	if err := HTTPServer.Shutdown(ctx); err != nil {
+		// Error from closing listeners, or context timeout:
+		log.Printf("Error shutting down HTTP server: %v", err)
 	}
-
-	if err := w.WriteFile(path, *data, 0755); err != nil {
-		return err
-	}
-
-	return nil
 }

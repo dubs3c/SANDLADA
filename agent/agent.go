@@ -14,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Options options for agent mode
@@ -35,7 +33,7 @@ type Task struct {
 // and the ID of a given analysis
 type Collection struct {
 	Server   string
-	UUID     uuid.UUID
+	UUID     string
 	Task     *Task
 	Executer string
 	FileType string
@@ -65,7 +63,7 @@ func (c *Collection) SendData(content []byte, filename string) (int, error) {
 	part, _ := w.CreateFormFile("file", filename)
 	io.Copy(part, reader)
 	w.Close()
-	r, err := http.NewRequest("POST", c.Server+"/collection/"+c.UUID.String(), body)
+	r, err := http.NewRequest("POST", c.Server+"/collection/"+c.UUID, body)
 	if err != nil {
 		log.Println("Error creating collection request, error:", err)
 		return 0, err

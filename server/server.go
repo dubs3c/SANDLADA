@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -12,10 +11,10 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dubs3c/SANDLADA/provider"
+	"github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
 
@@ -51,8 +50,8 @@ func IsAlive(ip string) (bool, error) {
 }
 
 // GetRequest sends a GET request to a given endpoint
-func GetRequest(ip string, endpoint string) (int, error) {
-	addr := fmt.Sprintf("http://%s/%s", ip, endpoint)
+func GetRequest(domain string, endpoint string) (int, error) {
+	addr := fmt.Sprintf("http://%s/%s", domain, endpoint)
 	r, err := http.NewRequest("GET", addr, bytes.NewBuffer([]byte{}))
 
 	if err != nil {
@@ -64,11 +63,14 @@ func GetRequest(ip string, endpoint string) (int, error) {
 		Timeout: 3 * time.Second,
 	}
 	resp, err := client.Do(r)
+
 	if err != nil {
 		return 0, err
 	}
-	return resp.StatusCode, err
 
+	defer resp.Body.Close()
+
+	return resp.StatusCode, err
 }
 
 // SendData sends data to agent
@@ -151,8 +153,12 @@ func StartServer(opts Options) {
 		log.Fatal("Fail to read configuration file: ", err)
 	}
 
+	// Generate UUID for sample for unique identification
+	projectUUID := uuid.New()
 	vmProvider := cfg.Section("sandlada").Key("provider").String()
+	virusTotalAPIKey := cfg.Section("sandlada").Key("virustotal").String()
 	snapshot := cfg.Section(opts.AgentVM).Key("snapshot").String()
+
 	vmInfo := &provider.VMInfo{
 		UUID:     cfg.Section(opts.AgentVM).Key("uuid").String(),
 		Name:     opts.AgentVM,
@@ -163,6 +169,7 @@ func StartServer(opts Options) {
 
 	opts.VMInfo = append(opts.VMInfo, *vmInfo)
 	opts.AnalysisFinished = make(chan string, 1)
+	opts.FileWriter = &MyFileWriter{}
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo
@@ -171,20 +178,19 @@ func StartServer(opts Options) {
 	running, err := m.IsRunning()
 
 	if err != nil {
-		log.Println("Could not check if VM is running, error: ", err)
-		log.Println("Checking if I can contact agent...")
-		ok, err := IsAlive(vmInfo.IP)
+		log.Printf("Could not check if VM is running, error: %v\nChecking if I can contact agent...", err)
 
-		if err != nil {
+		if ok, err := IsAlive(vmInfo.IP); err == nil {
+
+			if ok {
+				log.Println("Agent is responding to health checks, continuing...")
+			} else {
+				log.Fatal("Agent did not respond with 200 OK")
+			}
+
+		} else {
 			log.Fatal("Error contacting agent, error: ", err)
 		}
-
-		if ok {
-			log.Println("Agent is responding to health checks, continuing...")
-		} else {
-			log.Fatal("Agent did not respond with 200 OK")
-		}
-
 	}
 
 	if !running {
@@ -221,7 +227,7 @@ func StartServer(opts Options) {
 
 	HTTPServer := httpServer(opts)
 
-	status, err := GetRequest(vmInfo.IP, "start?executor="+opts.Executor)
+	status, err := GetRequest(vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID.String())
 
 	if err != nil {
 		log.Println("Could not start analysis automatically, please start manually")
@@ -231,6 +237,29 @@ func StartServer(opts Options) {
 		log.Println("Analysis has been started...")
 	}
 
+	if virusTotalAPIKey != "" {
+		if hash, err := CalculateSHA256(opts.Sample); err == nil {
+			resp, err := VirusTotalLookUpHash(hash, virusTotalAPIKey)
+
+			if err != nil {
+				log.Println("Virustotal hash lookup failed, error:", err)
+			} else {
+
+				dest := opts.Result + "/" + projectUUID.String()
+				filename := "virustotal.txt"
+
+				if err := WriteFileToDisk(opts.FileWriter, dest, filename, &resp); err != nil {
+					log.Printf("Could not write %s. Error: %v", filename, err)
+				} else {
+					log.Println("VirusTotal done")
+				}
+			}
+
+		} else {
+			log.Println("Error calculating SHA256 hash: ", err)
+		}
+	}
+
 	idleConnsClosed := make(chan struct{})
 
 	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
@@ -238,15 +267,15 @@ func StartServer(opts Options) {
 		signal.Notify(sigint, os.Interrupt)
 		<-sigint
 		log.Println("CTRL+C detected, shutting down")
-		shutdown(HTTPServer)
+		ShutdownHTTPServer(HTTPServer)
 		close(idleConnsClosed)
 	}(HTTPServer, idleConnsClosed)
 
 	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
 		// Analysis is finished, gracefully shutdown server
 		requestIP := <-opts.AnalysisFinished
-		shutdown(HTTPServer)
-		opts.shutdownVm(requestIP)
+		ShutdownHTTPServer(HTTPServer)
+		opts.ShutdownVm(requestIP)
 		close(idleConnsClosed)
 	}(HTTPServer, idleConnsClosed)
 
@@ -262,41 +291,4 @@ func StartServer(opts Options) {
 
 	log.Println("Server done, bye!")
 
-}
-
-func shutdown(HTTPServer *http.Server) {
-	// We received an interrupt signal, shut down.
-	log.Println("Shutting down HTTP server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	if err := HTTPServer.Shutdown(ctx); err != nil {
-		// Error from closing listeners, or context timeout:
-		log.Printf("Error shutting down HTTP server: %v", err)
-	}
-}
-
-func (o *Options) shutdownVm(requestIP string) {
-	log.Println("Shutting down VMs")
-	found := false
-	for _, vm := range o.VMInfo {
-		if strings.Split(vm.IP, ":")[0] == requestIP {
-			found = true
-			if err := vm.Stop(); err != nil {
-				log.Println("Could not stop VM, error:", err)
-				break
-			}
-
-			if err := vm.Revert(); err != nil {
-				log.Println("Could not revert VM to latest snapshot, error:", err)
-				break
-			}
-
-			log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
-			break
-		}
-	}
-
-	if !found {
-		log.Printf("IP %s was not found. Can not revert VM...", requestIP)
-	}
 }

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/h2non/filetype"
 )
 
@@ -160,9 +159,16 @@ func (c *Collection) letsGo() {
 
 // StartAnalysis kicks of analysis
 func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
-	c.UUID = uuid.New()
 
 	values := req.URL.Query()
+
+	c.UUID = values.Get("uuid")
+
+	if c.UUID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Expected uuid parameter to be set, got nothing"))
+		return
+	}
 
 	c.Executer = values.Get("executor")
 
@@ -171,7 +177,7 @@ func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 	go c.letsGo()
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(c.UUID.String()))
+	w.Write([]byte(c.UUID))
 }
 
 func (c *Collection) RunCommand(w http.ResponseWriter, req *http.Request) {
