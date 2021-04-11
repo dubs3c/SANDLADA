@@ -30,13 +30,14 @@ type Options struct {
 	Executor         string
 	VMInfo           []provider.VMInfo
 	AnalysisFinished chan string
-	FileWriter       Writer
+	FileWriter       FileOps
 }
 
 // IsAlive tries to contact the agent running inside the VM
 func IsAlive(ip string) (bool, error) {
 
-	resp, err := GetRequest(ip, "health")
+	addr := fmt.Sprintf("http://%s/%s", ip, "health")
+	resp, err := GetRequest(addr)
 
 	if err != nil {
 		return false, err
@@ -50,9 +51,8 @@ func IsAlive(ip string) (bool, error) {
 }
 
 // GetRequest sends a GET request to a given endpoint
-func GetRequest(domain string, endpoint string) (int, error) {
-	addr := fmt.Sprintf("http://%s/%s", domain, endpoint)
-	r, err := http.NewRequest("GET", addr, bytes.NewBuffer([]byte{}))
+func GetRequest(url string) (int, error) {
+	r, err := http.NewRequest("GET", url, bytes.NewBuffer([]byte{}))
 
 	if err != nil {
 		log.Println("Error creating collection request, error:", err)
@@ -227,7 +227,8 @@ func StartServer(opts Options) {
 
 	HTTPServer := httpServer(opts)
 
-	status, err := GetRequest(vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID.String())
+	addr := fmt.Sprintf("http://%s/%s", vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID.String())
+	status, err := GetRequest(addr)
 
 	if err != nil {
 		log.Println("Could not start analysis automatically, please start manually")
@@ -238,7 +239,7 @@ func StartServer(opts Options) {
 	}
 
 	if virusTotalAPIKey != "" {
-		if hash, err := CalculateSHA256(opts.Sample); err == nil {
+		if hash, err := CalculateSHA256OfFile(opts.FileWriter, opts.Sample); err == nil {
 			resp, err := VirusTotalLookUpHash(hash, virusTotalAPIKey)
 
 			if err != nil {
@@ -271,18 +272,29 @@ func StartServer(opts Options) {
 		close(idleConnsClosed)
 	}(HTTPServer, idleConnsClosed)
 
-	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}) {
-		// Analysis is finished, gracefully shutdown server
+	// Analysis is finished, gracefully shutdown server
+	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}, vmInfo *[]provider.VMInfo) {
 		requestIP := <-opts.AnalysisFinished
 		ShutdownHTTPServer(HTTPServer)
-		opts.ShutdownVm(requestIP)
+		vm, err := FilterVM(vmInfo, requestIP)
+
+		if err != nil {
+			log.Println("Couldn't locate VM in config: ", err)
+		} else {
+
+			if err := ShutdownVm(&vm); err != nil {
+				log.Println("Failed stopping VM: ", err)
+			} else {
+				log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
+			}
+		}
+
 		close(idleConnsClosed)
-	}(HTTPServer, idleConnsClosed)
+	}(HTTPServer, idleConnsClosed, &opts.VMInfo)
 
 	go func() {
 		log.Println("Starting collection server...")
 		if err := HTTPServer.ListenAndServe(); err != http.ErrServerClosed {
-			// Error starting or closing listener:
 			log.Fatalf("HTTP server ListenAndServe: %v", err)
 		}
 	}()
@@ -290,5 +302,4 @@ func StartServer(opts Options) {
 	<-idleConnsClosed
 
 	log.Println("Server done, bye!")
-
 }

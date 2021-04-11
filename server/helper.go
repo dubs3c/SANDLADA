@@ -5,23 +5,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/dubs3c/SANDLADA/provider"
 )
 
-type Writer interface {
-	WriteFile(filename string, data []byte, perm os.FileMode) error
+type FileOps interface {
+	Write(filename string, data []byte, perm os.FileMode) error
 	MkdirAll(dir string, perm os.FileMode) error
+	Read(filename string) (*[]byte, error)
 }
 
 type MyFileWriter struct{}
 
-func (f *MyFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+func (f *MyFileWriter) Write(filename string, data []byte, perm os.FileMode) error {
 	return ioutil.WriteFile(filename, data, perm)
 }
 
@@ -29,34 +32,32 @@ func (f *MyFileWriter) MkdirAll(dir string, perm os.FileMode) error {
 	return os.MkdirAll(dir, perm)
 }
 
+func (f *MyFileWriter) Read(filepath string) (*[]byte, error) {
+	b, err := ioutil.ReadFile(filepath)
+	return &b, err
+}
+
 // writeFileToDisk Writes files sent for collection to disk
-func WriteFileToDisk(w Writer, dir string, filename string, data *[]byte) error {
+func WriteFileToDisk(w FileOps, dir string, filename string, data *[]byte) error {
 	path := dir + "/" + filename
 
 	if err := w.MkdirAll(dir, os.ModeDir); err != nil {
 		return err
 	}
 
-	if err := w.WriteFile(path, *data, 0755); err != nil {
+	if err := w.Write(path, *data, 0755); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func CalculateSHA256(filepath string) (string, error) {
-	f, err := os.Open(filepath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
+func CalculateSHA256OfFile(w FileOps, filepath string) (string, error) {
+	contents, err := w.Read(filepath)
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
+	hash := sha256.Sum256(*contents)
 
-	encodedStr := hex.EncodeToString(h.Sum(nil))
+	encodedStr := hex.EncodeToString(hash[:])
 
 	return encodedStr, err
 }
@@ -99,6 +100,7 @@ func VirusTotalAPIRequest(url string, headers map[string]string) ([]byte, error)
 	return bodyBytes, err
 }
 
+// VirusTotalLookUpHash Given a hash, check if it exists in VirusTotal
 func VirusTotalLookUpHash(hash string, apiKey string) ([]byte, error) {
 	headers := map[string]string{}
 	headers["x-apikey"] = apiKey
@@ -111,28 +113,27 @@ func VirusTotalLookUpHash(hash string, apiKey string) ([]byte, error) {
 	return resp, err
 }
 
-func (o *Options) ShutdownVm(requestIP string) {
-	log.Println("Shutting down VMs")
-	found := false
-	for _, vm := range o.VMInfo {
-		if strings.Split(vm.IP, ":")[0] == requestIP {
-			found = true
-			if err := vm.Stop(); err != nil {
-				log.Println("Could not stop VM, error:", err)
-				break
-			}
-
-			if err := vm.Revert(); err != nil {
-				log.Println("Could not revert VM to latest snapshot, error:", err)
-				break
-			}
-
-			log.Printf("Virtual machine '%s' has been reverted to previous snapshot\n", vm.Name)
-			break
+// FilterVM Simply returns a VMInfo struct if its IP matches the requestIP
+func FilterVM(vms *[]provider.VMInfo, requestIP string) (provider.VMInfo, error) {
+	for _, v := range *vms {
+		if strings.HasPrefix(v.IP, requestIP) {
+			return v, nil
 		}
 	}
+	return provider.VMInfo{}, errors.New("VM not found")
+}
 
-	if !found {
-		log.Printf("IP %s was not found. Can not revert VM...", requestIP)
+// ShutdownVm Shuts down a given VM and reverts to current snapshot
+func ShutdownVm(vm provider.Machine) error {
+	log.Println("Shutting down VMs")
+
+	if err := vm.Stop(); err != nil {
+		return fmt.Errorf("could not stop VM, error: %v", err)
 	}
+
+	if err := vm.Revert(); err != nil {
+		return fmt.Errorf("could not revert VM to latest snapshot, error: %v", err)
+	}
+
+	return nil
 }

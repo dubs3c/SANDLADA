@@ -35,7 +35,7 @@ func TestReceiveStatusUpdate(t *testing.T) {
 	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
-			status, http.StatusOK, string(rr.Body.Bytes()))
+			status, http.StatusOK, rr.Body.String())
 	}
 
 }
@@ -57,19 +57,23 @@ func TestTestReceiveStatusUpdateNoMessage(t *testing.T) {
 	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusBadRequest {
 		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
-			status, http.StatusBadRequest, string(rr.Body.Bytes()))
+			status, http.StatusBadRequest, rr.Body.String())
 	}
 
 }
 
 type FakeFileWriter struct{}
 
-func (f *FakeFileWriter) WriteFile(filename string, data []byte, perm os.FileMode) error {
+func (f *FakeFileWriter) Write(filename string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
 func (f *FakeFileWriter) MkdirAll(dir string, perm os.FileMode) error {
 	return nil
+}
+
+func (f *FakeFileWriter) Read(filepath string) (*[]byte, error) {
+	return &[]byte{}, nil
 }
 
 func TestCollectData(t *testing.T) {
@@ -103,6 +107,6 @@ func TestCollectData(t *testing.T) {
 	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("handler returned wrong status code: got %v want %v. Error message: %s",
-			status, http.StatusOK, string(rr.Body.Bytes()))
+			status, http.StatusOK, rr.Body.String())
 	}
 }
