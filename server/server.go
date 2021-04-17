@@ -154,7 +154,7 @@ func StartServer(opts Options) {
 	}
 
 	// Generate UUID for sample for unique identification
-	projectUUID := uuid.New()
+	projectUUID := uuid.New().String()
 	vmProvider := cfg.Section("sandlada").Key("provider").String()
 	virusTotalAPIKey := cfg.Section("sandlada").Key("virustotal").String()
 	snapshot := cfg.Section(opts.AgentVM).Key("snapshot").String()
@@ -200,7 +200,7 @@ func StartServer(opts Options) {
 		}
 		log.Println("Started...")
 		log.Println("Waiting for contact with agent...")
-		for true {
+		for {
 			ok, _ := IsAlive(vmInfo.IP)
 			if ok {
 				log.Println("Agent online!")
@@ -227,7 +227,7 @@ func StartServer(opts Options) {
 
 	HTTPServer := httpServer(opts)
 
-	addr := fmt.Sprintf("http://%s/%s", vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID.String())
+	addr := fmt.Sprintf("http://%s/%s", vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID)
 	status, err := GetRequest(addr)
 
 	if err != nil {
@@ -246,7 +246,7 @@ func StartServer(opts Options) {
 				log.Println("Virustotal hash lookup failed, error:", err)
 			} else {
 
-				dest := opts.Result + "/" + projectUUID.String()
+				dest := opts.Result + "/" + projectUUID
 				filename := "virustotal.txt"
 
 				if err := WriteFileToDisk(opts.FileWriter, dest, filename, &resp); err != nil {
@@ -273,6 +273,7 @@ func StartServer(opts Options) {
 	}(HTTPServer, idleConnsClosed)
 
 	// Analysis is finished, gracefully shutdown server
+	// But attempt to acquire a memory dump first
 	go func(HTTPServer *http.Server, idleConnsClosed chan struct{}, vmInfo *[]provider.VMInfo) {
 		requestIP := <-opts.AnalysisFinished
 		ShutdownHTTPServer(HTTPServer)
@@ -281,6 +282,18 @@ func StartServer(opts Options) {
 		if err != nil {
 			log.Println("Couldn't locate VM in config: ", err)
 		} else {
+
+			log.Printf("Acquiring memory capture of %s\n", vm.Name)
+			dest := opts.Result + "/" + projectUUID
+			err := opts.FileWriter.MkdirAll(dest, os.ModeDir)
+
+			if err != nil {
+				log.Println("Failed creating directory, error: ", err)
+			} else {
+				if err := vm.MemoryDump(dest); err != nil {
+					log.Printf("Failed acquiring memory dump of %s, error: %v\n", vm.Name, err)
+				}
+			}
 
 			if err := ShutdownVm(&vm); err != nil {
 				log.Println("Failed stopping VM: ", err)

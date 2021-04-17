@@ -172,7 +172,7 @@ func (c *Collection) StartAnalysis(w http.ResponseWriter, req *http.Request) {
 
 	c.Executer = values.Get("executor")
 
-	log.Println("Starting analysis...")
+	log.Printf("Starting analysis of %s\n", c.UUID)
 
 	go c.letsGo()
 

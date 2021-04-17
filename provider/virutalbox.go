@@ -92,6 +92,18 @@ func (m *VMInfo) IsRunning() (bool, error) {
 	return false, nil
 }
 
+func (m *VMInfo) MemoryDump(destination string) error {
+
+	filename := destination + "/memory.cap"
+	cmd := exec.Command("VBoxManage", "debugvm", m.Name, "dumpvmcore", "--filename="+filename)
+
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 /*
 	Exekvera program från host i VM: VBoxManage guestcontrol 7d473abc-0796-4186-bbc4-7144b5399daf --username vagrant --password vagrant run "/bin/ps" "aux"
 	Överföra filer: VBoxManage guestcontrol 7d473abc-0796-4186-bbc4-7144b5399daf --username vagrant --password vagrant copyto config.ini /home/vagrant/works.ini
