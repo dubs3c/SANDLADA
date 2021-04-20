@@ -110,3 +110,60 @@ func TestCollectData(t *testing.T) {
 			status, http.StatusOK, rr.Body.String())
 	}
 }
+
+func TestGetRequest(t *testing.T) {
+	var body []byte
+	headers := map[string]string{}
+	headers["x-apikey"] = "1234"
+	expected := "Hello Test " + headers["x-apikey"]
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		h := r.Header.Get("x-apikey")
+		w.Write([]byte("Hello Test " + h))
+	}))
+	defer ts.Close()
+
+	_, err := GetRequest(ts.URL, headers, &body)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(body) != expected {
+		t.Errorf("expected '%s', got %s", expected, string(body))
+	}
+}
+
+func TestSendData(t *testing.T) {
+	var data bytes.Buffer
+	expected := []byte("Hello Test")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("could not parse multipart form")
+		}
+
+		multipartFile, _, err := r.FormFile("file")
+
+		if err != nil {
+			t.Fatalf("could not parse multipart data")
+		}
+
+		defer multipartFile.Close()
+
+		io.Copy(&data, multipartFile)
+
+	}))
+	defer ts.Close()
+
+	_, err := SendData(ts.URL, &expected)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(data.Bytes(), expected) {
+		t.Errorf("expected '%s', got %s", expected, data.Bytes())
+	}
+}

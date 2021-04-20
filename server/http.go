@@ -112,7 +112,7 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 
 	defer multipartFile.Close()
 
-	io.Copy(&data, multipartFile)
+	_, err = io.Copy(&data, multipartFile)
 
 	if err != nil {
 		fmt.Println("Error reading collected data: ", err)
@@ -162,28 +162,24 @@ func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func ShutdownHTTPServer(HTTPServer *http.Server) {
+func ShutdownHTTPServer(HTTPServer *http.Server) error {
 	// We received an interrupt signal, shut down.
-	log.Println("Shutting down HTTP server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
-	if err := HTTPServer.Shutdown(ctx); err != nil {
-		// Error from closing listeners, or context timeout:
-		log.Printf("Error shutting down HTTP server: %v", err)
-	}
+	return HTTPServer.Shutdown(ctx)
 }
 
 // IsAlive tries to contact the agent running inside the VM
 func IsAlive(ip string) (bool, error) {
 
 	addr := fmt.Sprintf("http://%s/%s", ip, "health")
-	resp, err := GetRequest(addr)
+	code, err := GetRequest(addr, map[string]string{}, &[]byte{})
 
 	if err != nil {
 		return false, err
 	}
 
-	if resp == 200 {
+	if code == 200 {
 		return true, nil
 	}
 
@@ -191,7 +187,7 @@ func IsAlive(ip string) (bool, error) {
 }
 
 // GetRequest sends a GET request to a given endpoint
-func GetRequest(url string) (int, error) {
+func GetRequest(url string, headers map[string]string, body *[]byte) (int, error) {
 	r, err := http.NewRequest("GET", url, bytes.NewBuffer([]byte{}))
 
 	if err != nil {
@@ -199,9 +195,16 @@ func GetRequest(url string) (int, error) {
 		return 0, err
 	}
 
+	if len(headers) != 0 {
+		for header, value := range headers {
+			r.Header.Add(header, value)
+		}
+	}
+
 	client := &http.Client{
 		Timeout: 3 * time.Second,
 	}
+
 	resp, err := client.Do(r)
 
 	if err != nil {
@@ -209,6 +212,12 @@ func GetRequest(url string) (int, error) {
 	}
 
 	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+
+	if err == nil {
+		*body = bodyBytes
+	}
 
 	return resp.StatusCode, err
 }
@@ -235,9 +244,13 @@ func SendData(url string, content *[]byte) (int, error) {
 		Timeout: 3 * time.Second,
 	}
 	resp, err := client.Do(r)
+
 	if err != nil {
 		return 0, err
 	}
+
+	defer resp.Body.Close()
+
 	return resp.StatusCode, err
 }
 

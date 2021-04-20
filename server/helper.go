@@ -1,17 +1,14 @@
 package server
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/dubs3c/SANDLADA/provider"
 )
@@ -62,55 +59,22 @@ func CalculateSHA256OfFile(w FileOps, filepath string) (string, error) {
 	return encodedStr, err
 }
 
-// VirusTotalAPIRequest Check with VirusTotal
-func VirusTotalAPIRequest(url string, headers map[string]string) ([]byte, error) {
-	r, err := http.NewRequest("GET", url, bytes.NewBuffer([]byte{}))
-
-	if err != nil {
-		return nil, err
-	}
-
-	if len(headers) != 0 {
-		for header, value := range headers {
-			r.Header.Add(header, value)
-		}
-	}
-
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
-	resp, err := client.Do(r)
+// VirusTotalLookUpHash Given a hash, check if it exists in VirusTotal
+func VirusTotalLookUpHash(hash string, apiKey string) ([]byte, error) {
+	var body []byte
+	headers := map[string]string{}
+	headers["x-apikey"] = apiKey
+	code, err := GetRequest("https://www.virustotal.com/api/v3/files/"+hash, headers, &body)
 
 	if err != nil {
 		return []byte{}, err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if code != 200 {
 		return []byte{}, errors.New("VirusTotal did not find anything with that hash")
 	}
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return bodyBytes, err
-}
-
-// VirusTotalLookUpHash Given a hash, check if it exists in VirusTotal
-func VirusTotalLookUpHash(hash string, apiKey string) ([]byte, error) {
-	headers := map[string]string{}
-	headers["x-apikey"] = apiKey
-	resp, err := VirusTotalAPIRequest("https://www.virustotal.com/api/v3/files/"+hash, headers)
-
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return resp, err
+	return body, err
 }
 
 // FilterVM Simply returns a VMInfo struct if its IP matches the requestIP
