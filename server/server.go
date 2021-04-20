@@ -2,15 +2,11 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"time"
 
 	"github.com/dubs3c/SANDLADA/provider"
@@ -33,116 +29,12 @@ type Options struct {
 	FileWriter       FileOps
 }
 
-// IsAlive tries to contact the agent running inside the VM
-func IsAlive(ip string) (bool, error) {
-
-	addr := fmt.Sprintf("http://%s/%s", ip, "health")
-	resp, err := GetRequest(addr)
-
-	if err != nil {
-		return false, err
-	}
-
-	if resp == 200 {
-		return true, nil
-	}
-
-	return false, nil
-}
-
-// GetRequest sends a GET request to a given endpoint
-func GetRequest(url string) (int, error) {
-	r, err := http.NewRequest("GET", url, bytes.NewBuffer([]byte{}))
-
-	if err != nil {
-		log.Println("Error creating collection request, error:", err)
-		return 0, err
-	}
-
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-	resp, err := client.Do(r)
-
-	if err != nil {
-		return 0, err
-	}
-
-	defer resp.Body.Close()
-
-	return resp.StatusCode, err
-}
-
-// SendData sends data to agent
-func SendData(url string, content *[]byte) (int, error) {
-	body := &bytes.Buffer{}
-	w := multipart.NewWriter(body)
-
-	part, _ := w.CreateFormFile("file", "binary")
-	part.Write(*content)
-
-	w.Close()
-
-	r, err := http.NewRequest("POST", url, body)
-	r.Header.Add("Content-Type", w.FormDataContentType())
-
-	if err != nil {
-		log.Println("Error creating collection request, error:", err)
-		return 0, err
-	}
-
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-	resp, err := client.Do(r)
-	if err != nil {
-		return 0, err
-	}
-	return resp.StatusCode, err
-}
-
-// TransferFile transfers the malware sample to the agent
-func TransferFile(ip string, filePath string) (int, error) {
-	content, err := ioutil.ReadFile(filePath)
-
-	if err != nil {
-		return 0, err
-	}
-
-	statusCode, err := SendData("http://"+ip+"/transfer", &content)
-	return statusCode, err
-}
-
 // Can be further developed for the interactive version
 func scanner() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		fmt.Println(scanner.Text())
 	}
-}
-
-func httpServer(opts Options) *http.Server {
-	router := http.NewServeMux()
-	router.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("I'm OK"))
-
-	})
-
-	router.HandleFunc("/status/", opts.ReceiveStatusUpdate)
-	router.HandleFunc("/collection/", opts.CollectData)
-	router.HandleFunc("/finished/", opts.FinishAnalysis)
-
-	HTTPServer := &http.Server{
-		Addr:           "0.0.0.0:" + strconv.Itoa(opts.LocalPort),
-		Handler:        router,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		IdleTimeout:    15 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
-
-	return HTTPServer
 }
 
 // StartServer starts SANDLÅDA in server mode
@@ -156,20 +48,23 @@ func StartServer(opts Options) {
 	// Generate UUID for sample for unique identification
 	projectUUID := uuid.New().String()
 	vmProvider := cfg.Section("sandlada").Key("provider").String()
+	volatilityPath := cfg.Section("sandlada").Key("volatility").String()
 	virusTotalAPIKey := cfg.Section("sandlada").Key("virustotal").String()
-	snapshot := cfg.Section(opts.AgentVM).Key("snapshot").String()
 
 	vmInfo := &provider.VMInfo{
-		UUID:     cfg.Section(opts.AgentVM).Key("uuid").String(),
-		Name:     opts.AgentVM,
-		Path:     cfg.Section("virtualbox").Key("path").String(),
-		Snapshot: snapshot,
-		IP:       cfg.Section(opts.AgentVM).Key("ip").String(),
+		UUID:              cfg.Section(opts.AgentVM).Key("uuid").String(),
+		Name:              opts.AgentVM,
+		Path:              cfg.Section("virtualbox").Key("path").String(),
+		Snapshot:          cfg.Section(opts.AgentVM).Key("snapshot").String(),
+		IP:                cfg.Section(opts.AgentVM).Key("ip").String(),
+		Platform:          cfg.Section(opts.AgentVM).Key("platform").String(),
+		VolatilityProfile: cfg.Section(opts.AgentVM).Key("volatilityProfile").String(),
 	}
 
 	opts.VMInfo = append(opts.VMInfo, *vmInfo)
 	opts.AnalysisFinished = make(chan string, 1)
 	opts.FileWriter = &MyFileWriter{}
+	runner := &Runner{}
 
 	if vmProvider == "virtualbox" {
 		m = vmInfo
@@ -225,17 +120,18 @@ func StartServer(opts Options) {
 
 	log.Println("Malware sample received...")
 
-	HTTPServer := httpServer(opts)
+	HTTPServer := HttpServer(opts)
 
 	addr := fmt.Sprintf("http://%s/%s", vmInfo.IP, "start?executor="+opts.Executor+"&uuid="+projectUUID)
 	status, err := GetRequest(addr)
 
 	if err != nil {
 		log.Println("Could not start analysis automatically, please start manually")
-	}
+	} else {
 
-	if status == 200 {
-		log.Println("Analysis has been started...")
+		if status == 200 {
+			log.Println("Analysis has been started...")
+		}
 	}
 
 	if virusTotalAPIKey != "" {
@@ -314,5 +210,12 @@ func StartServer(opts Options) {
 
 	<-idleConnsClosed
 
-	log.Println("Server done, bye!")
+	log.Println("HTTP Server done, running processing modules")
+
+	dumpPath := opts.Result + "/" + projectUUID + "/memory.cap"
+	if ok, err := MemoryProcessing(volatilityPath, dumpPath, vmInfo, runner); !ok {
+		log.Println("Memory processing failed with errors: ", err)
+	}
+
+	log.Println("Analysis and processing complete!")
 }

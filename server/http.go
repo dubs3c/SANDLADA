@@ -5,11 +5,39 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// HttpServer returns a HttpServer
+func HttpServer(opts Options) *http.Server {
+	router := http.NewServeMux()
+	router.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("I'm OK"))
+
+	})
+
+	router.HandleFunc("/status/", opts.ReceiveStatusUpdate)
+	router.HandleFunc("/collection/", opts.CollectData)
+	router.HandleFunc("/finished/", opts.FinishAnalysis)
+
+	HTTPServer := &http.Server{
+		Addr:           "0.0.0.0:" + strconv.Itoa(opts.LocalPort),
+		Handler:        router,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    15 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	return HTTPServer
+}
 
 // ReceiveStatusUpdate receives status updates from the agent, e.g. what's currently running
 // or if any errors has ocurred
@@ -143,4 +171,84 @@ func ShutdownHTTPServer(HTTPServer *http.Server) {
 		// Error from closing listeners, or context timeout:
 		log.Printf("Error shutting down HTTP server: %v", err)
 	}
+}
+
+// IsAlive tries to contact the agent running inside the VM
+func IsAlive(ip string) (bool, error) {
+
+	addr := fmt.Sprintf("http://%s/%s", ip, "health")
+	resp, err := GetRequest(addr)
+
+	if err != nil {
+		return false, err
+	}
+
+	if resp == 200 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// GetRequest sends a GET request to a given endpoint
+func GetRequest(url string) (int, error) {
+	r, err := http.NewRequest("GET", url, bytes.NewBuffer([]byte{}))
+
+	if err != nil {
+		log.Println("Error creating collection request, error:", err)
+		return 0, err
+	}
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Do(r)
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer resp.Body.Close()
+
+	return resp.StatusCode, err
+}
+
+// SendData sends data to agent
+func SendData(url string, content *[]byte) (int, error) {
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+
+	part, _ := w.CreateFormFile("file", "binary")
+	part.Write(*content)
+
+	w.Close()
+
+	r, err := http.NewRequest("POST", url, body)
+	r.Header.Add("Content-Type", w.FormDataContentType())
+
+	if err != nil {
+		log.Println("Error creating collection request, error:", err)
+		return 0, err
+	}
+
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+	resp, err := client.Do(r)
+	if err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, err
+}
+
+// TransferFile transfers the malware sample to the agent
+func TransferFile(ip string, filePath string) (int, error) {
+	content, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		return 0, err
+	}
+
+	statusCode, err := SendData("http://"+ip+"/transfer", &content)
+	return statusCode, err
 }

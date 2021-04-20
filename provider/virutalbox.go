@@ -18,12 +18,14 @@ type Machine interface {
 
 // VMInfo - VirtualBox provider
 type VMInfo struct {
-	Name     string
-	UUID     string
-	Path     string
-	Snapshot string
-	IP       string
-	State    string
+	Name              string
+	UUID              string
+	Path              string
+	Snapshot          string
+	IP                string
+	State             string
+	Platform          string
+	VolatilityProfile string
 }
 
 // Start - Start a virtual machine
@@ -92,6 +94,7 @@ func (m *VMInfo) IsRunning() (bool, error) {
 	return false, nil
 }
 
+// MemoryDump dumps the memory of the virtual machine
 func (m *VMInfo) MemoryDump(destination string) error {
 
 	filename := destination + "/memory.cap"

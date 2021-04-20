@@ -17,6 +17,7 @@ func main() {
 	serverMode := flag.NewFlagSet("server", flag.ExitOnError)
 	userHomeDir, _ := os.UserHomeDir()
 	sandladaDir := userHomeDir + "/.sandlada"
+	configIni := userHomeDir + "/.sandlada/config.ini"
 	resultDir := sandladaDir + "/result"
 
 	serverMode.StringVar(&srvOpts.Sample, "sample", "", "Malware sample to analyse")
@@ -27,8 +28,8 @@ func main() {
 	serverMode.StringVar(&srvOpts.AgentIP, "ip", "", "IP of agent to send sample to")
 	serverMode.StringVar(&srvOpts.Database, "database", "~/.sandlada/sqlite.db", "Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db")
 	serverMode.StringVar(&srvOpts.Database, "d", "~/.sandlada/sqlite.db", "Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db")
-	serverMode.StringVar(&srvOpts.Config, "config", "~/.sandlada/config.ini", "Configuration file to read from. Default ~/.sandlada/config.ini")
-	serverMode.StringVar(&srvOpts.Config, "c", "~/.sandlada/config.ini", "Configuration file to read from. Default ~/.sandlada/config.ini")
+	serverMode.StringVar(&srvOpts.Config, "config", configIni, "Configuration file to read from. Default ~/.sandlada/config.ini")
+	serverMode.StringVar(&srvOpts.Config, "c", configIni, "Configuration file to read from. Default ~/.sandlada/config.ini")
 	serverMode.StringVar(&srvOpts.Result, "result", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
 	serverMode.StringVar(&srvOpts.Result, "r", resultDir, "Folder location to store analysis results in. Default ~/.sandlada/result")
 	serverMode.StringVar(&srvOpts.Executor, "executor", "", "Run malware with specific command, e.g. \"python2.7\"")
