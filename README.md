@@ -3,7 +3,7 @@
 <p align="center">
   <p align="center">
     <a href="https://goreportcard.com/report/github.com/dubs3c/SANDLADA"><img src="https://goreportcard.com/badge/github.com/dubs3c/SANDLADA"></a>
-    <a href="https://github.com/dubs3c/SANDLADA/actions/workflows/go.yml"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/workflow/status/dubs3c/SANDLADA/Go"></a>
+    <a href="https://github.com/dubs3c/SANDLADA/actions/workflows/go.yml"><img alt="GitHub Workflow Status" src="https://img.shields.io/github/actions/workflow/status/dubs3c/SANDLADA/go.yml"></a>
     <a href="https://codecov.io/gh/dubs3c/SANDLADA">
         <img src="https://codecov.io/gh/dubs3c/SANDLADA/branch/main/graph/badge.svg?token=CJ3UJZIIJN"/>
     </a>
