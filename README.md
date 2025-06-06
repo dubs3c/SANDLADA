@@ -37,7 +37,7 @@ Usage:
 
 Server options:
   -s,     --sample    Malware sample to analyse
-  -vm,    --agent-vm  VM to use for analysis, read from conffig file
+  -vm,    --agent-vm  VM to use for analysis, read from config file
   -ip,    --agent-ip  IP of agent to send sample to
   -r,     --result    Folder location to store analysis results in. Default ~/.sandlada/result
   -e,     --executor  Run malware with specific command, e.g. "python2.7"
