@@ -134,7 +134,7 @@ func (o *Options) CollectData(w http.ResponseWriter, req *http.Request) {
 }
 
 // FinishAnalysis notifies the server that a specific analysis is complete.
-// The will then attempt to reset the corresponding VM.
+// The server will then attempt to reset the corresponding VM.
 func (o *Options) FinishAnalysis(w http.ResponseWriter, req *http.Request) {
 
 	if req.Method != "GET" {
