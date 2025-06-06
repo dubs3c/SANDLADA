@@ -22,8 +22,8 @@ func main() {
 
 	serverMode.StringVar(&srvOpts.Sample, "sample", "", "Malware sample to analyse")
 	serverMode.StringVar(&srvOpts.Sample, "s", "", "Malware sample to analyse")
-	serverMode.StringVar(&srvOpts.AgentVM, "agentVM", "", "VM to use for analysis, read from conffig file")
-	serverMode.StringVar(&srvOpts.AgentVM, "vm", "", "VM to use for analysis, read from conffig file")
+        serverMode.StringVar(&srvOpts.AgentVM, "agentVM", "", "VM to use for analysis, read from config file")
+        serverMode.StringVar(&srvOpts.AgentVM, "vm", "", "VM to use for analysis, read from config file")
 	serverMode.StringVar(&srvOpts.AgentIP, "agentIP", "", "IP of agent to send sample to")
 	serverMode.StringVar(&srvOpts.AgentIP, "ip", "", "IP of agent to send sample to")
 	serverMode.StringVar(&srvOpts.Database, "database", "~/.sandlada/sqlite.db", "Use local sqlite database for storing results. Default ~/.sandlada/sqlite.db")
