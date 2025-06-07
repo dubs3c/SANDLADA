@@ -157,10 +157,14 @@ func TestSendData(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	_, err := SendData(ts.URL, &expected)
+	statusCode, err := SendData(ts.URL, &expected)
 
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if statusCode != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, statusCode)
 	}
 
 	if !bytes.Equal(data.Bytes(), expected) {
