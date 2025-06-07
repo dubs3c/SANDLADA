@@ -102,6 +102,15 @@ func (c *Collection) runCommand(ctx context.Context, taskName string, commando [
 	return nil, stdout.Bytes()
 }
 
+// buildExecutionCommand returns the command used to execute the sample. If no
+// executor is specified the sample is executed directly from /tmp/binary.
+func buildExecutionCommand(executer string) string {
+	if len(executer) > 0 {
+		return fmt.Sprintf("%s /tmp/binary", executer)
+	}
+	return "/tmp/binary"
+}
+
 // BehaviorAnalysis Runs malware sample
 // Executer specifies if the sample should be run by a specific program
 // For example, some samples needs to be run as 'python2 sample.py'.
@@ -119,11 +128,7 @@ func (c *Collection) BehaviorAnalysis(ctx context.Context, executer string, wg *
 		return
 	}
 
-	if len(executer) > 0 {
-		commando = fmt.Sprintf("%s /tmp/binary", executer)
-	} else {
-		commando = "./tmp/binary"
-	}
+	commando = buildExecutionCommand(executer)
 
 	command := []string{"staprun", "-R", "-c", commando, "/opt/sandlada.ko"}
 	err, output := c.runCommand(ctx, "Behavior Analysis", command)
